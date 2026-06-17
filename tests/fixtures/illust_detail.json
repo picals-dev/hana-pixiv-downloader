@@ -1,0 +1,19 @@
+{
+  "error": false,
+  "message": "",
+  "body": {
+    "tags": {
+      "tags": [
+        {
+          "tag": "初音ミク",
+          "translation": {
+            "en": "Hatsune Miku"
+          }
+        },
+        {
+          "tag": "オリジナル"
+        }
+      ]
+    }
+  }
+}

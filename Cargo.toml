@@ -2,5 +2,30 @@
 name = "picals-crawler"
 version = "0.1.0"
 edition = "2024"
+description = "开箱即用的 Pixiv 图片下载 CLI 工具"
+authors = ["nonhana"]
+license = "MIT"
 
 [dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
+reqwest = { version = "0.12", default-features = false, features = ["http2", "socks", "cookies", "rustls-tls", "charset", "json"] }
+clap = { version = "4", features = ["derive", "wrap_help"] }
+inquire = "0.7"
+indicatif = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+eyre = "0.6"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+jiff = "0.1"
+regex = "1"
+dirs-next = "2"
+url = "2"
+futures = "0.3"
+
+[dev-dependencies]
+wiremock = "0.6"
+tempfile = "3"
+tokio-test = "0.4"

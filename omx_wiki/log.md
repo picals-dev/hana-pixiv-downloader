@@ -1,5 +1,13 @@
 # Wiki Log
 
+## [2026-06-17T00:00:00.000Z] move
+- **Pages:** picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md
+- **Summary:** Moved NEA design documents into omx_wiki and normalized wiki metadata
+
+## [2026-06-17T00:00:00.000Z] add
+- **Pages:** picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, index.md
+- **Summary:** Refreshed wiki index to include product and technical design pages
+
 ## [2026-06-17T03:16:44.819Z] add
 - **Pages:** none
 - **Summary:** Refreshed wiki index and derived metadata surfaces
@@ -31,4 +39,3 @@
 ## [2026-06-17T03:17:25.316Z] lint
 - **Pages:** picals-crawler-项目理解基线.md
 - **Summary:** Lint: 1 issues (1 orphan, 0 stale, 0 broken, 0 contradictions)
-
