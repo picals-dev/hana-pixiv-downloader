@@ -1,0 +1,3 @@
+[submodule "repos/picals-crawler-ts"]
+	path = repos/picals-crawler-ts
+	url = git@github.com:picals-dev/crawler.git
