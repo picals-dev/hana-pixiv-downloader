@@ -51,7 +51,7 @@ impl Default for DownloadConfig {
             concurrent: 8,
             timeout: 30,
             retry: 3,
-            with_tags: true,
+            with_tags: false,
         }
     }
 }

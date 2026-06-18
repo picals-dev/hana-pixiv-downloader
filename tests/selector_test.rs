@@ -1,3 +1,4 @@
+#[path = "support/mod.rs"]
 mod common;
 
 use picals_crawler::collector::selector::{

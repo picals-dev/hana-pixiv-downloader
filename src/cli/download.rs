@@ -59,10 +59,10 @@ pub struct CommonDownloadArgs {
     #[arg(long, value_name = "N", help = "网络错误重试次数")]
     pub retry: Option<usize>,
 
-    #[arg(long = "with-tags", action = ArgAction::SetTrue, conflicts_with = "no_tags", help = "保存 tags.json")]
+    #[arg(long = "with-tags", action = ArgAction::SetTrue, conflicts_with = "no_tags", help = "保留选项，当前版本暂不导出 tags.json")]
     pub with_tags: bool,
 
-    #[arg(long = "no-tags", action = ArgAction::SetTrue, conflicts_with = "with_tags", help = "不保存 tags.json")]
+    #[arg(long = "no-tags", action = ArgAction::SetTrue, conflicts_with = "with_tags", help = "显式关闭保留的 tags 导出选项")]
     pub no_tags: bool,
 
     #[arg(long, action = ArgAction::SetTrue, help = "只列出将要下载的内容，不实际下载")]

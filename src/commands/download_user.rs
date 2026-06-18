@@ -3,7 +3,7 @@
 use crate::{
     auth::Credential,
     cli::download::UserArgs,
-    config::{Config, EnvOverrides},
+    config::{Config, EnvOverrides, SortOrder},
     crawler::user::UserCrawler,
     error::{AppResult, CrawlerError},
     utils::url::extract_user_id,
@@ -14,11 +14,13 @@ pub async fn run(args: UserArgs) -> AppResult<()> {
     let config = Config::load()?;
     let env = EnvOverrides::from_process_env();
     let options = config.resolve_download_options(&env, &args.common.to_overrides())?;
+    ensure_sort_supported(options.sort)?;
+    let target_directory = options.directory.join(&artist_id);
     let credential = Credential::load()?;
 
     if options.dry_run {
         println!("将下载画师 {} 的作品（dry-run）", artist_id);
-        println!("下载目录: {}", options.directory.display());
+        println!("下载目录: {}", target_directory.display());
         println!("下载数量: {}", options.count);
         println!("排序方式: {:?}", options.sort);
         println!("并发下载数: {}", options.concurrent);
@@ -34,13 +36,44 @@ pub async fn run(args: UserArgs) -> AppResult<()> {
     }
 
     let credential = credential.ok_or(CrawlerError::MissingCredential)?;
-    let crawler = UserCrawler::new(artist_id, credential, options);
+    let crawler = UserCrawler::new(artist_id, credential, options)?;
     let result = crawler.run().await?;
 
+    println!("下载目录: {}", target_directory.display());
     println!(
         "下载完成：总数 {}，成功 {}，跳过 {}，失败 {}",
         result.total, result.downloaded, result.skipped, result.failed
     );
 
     Ok(())
+}
+
+fn ensure_sort_supported(sort: SortOrder) -> AppResult<()> {
+    if sort == SortOrder::PopularDesc {
+        return Err(CrawlerError::InvalidInput(
+            "download user 在当前版本暂不支持 --sort popular_desc".to_string(),
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::SortOrder;
+
+    use super::ensure_sort_supported;
+
+    #[test]
+    fn user_download_rejects_popular_sort() {
+        let error = ensure_sort_supported(SortOrder::PopularDesc).unwrap_err();
+        assert!(format!("{error:#}").contains("暂不支持 --sort popular_desc"));
+    }
+
+    #[test]
+    fn user_download_accepts_date_sorts() {
+        ensure_sort_supported(SortOrder::DateDesc).unwrap();
+        ensure_sort_supported(SortOrder::DateAsc).unwrap();
+    }
 }
