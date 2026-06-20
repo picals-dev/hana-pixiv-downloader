@@ -12,7 +12,7 @@ use crate::{
 pub async fn run(args: UserArgs) -> AppResult<()> {
     let artist_id = extract_user_id(&args.target)?;
     let config = Config::load()?;
-    let env = EnvOverrides::from_process_env();
+    let env = EnvOverrides::from_process_env()?;
     let options = config.resolve_download_options(&env, &args.common.to_overrides())?;
     ensure_sort_supported(options.sort)?;
     let target_directory = options.directory.join(&artist_id);

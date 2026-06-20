@@ -3,10 +3,8 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    str::FromStr,
 };
 
-use clap::ValueEnum;
 use eyre::{Context, eyre};
 use serde::{Deserialize, Serialize};
 
@@ -16,10 +14,11 @@ const CONFIG_DIR_NAME: &str = "picals-crawler";
 const CONFIG_FILE_NAME: &str = "config.toml";
 const CREDENTIAL_FILE_NAME: &str = "credentials";
 const DEFAULT_DOWNLOAD_DIRECTORY: &str = "~/Pictures/Pixiv";
+pub const POPULAR_SORT_MIGRATION_MESSAGE: &str =
+    "popular_desc 已不再支持，请改用 date_desc 或 date_asc";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-#[value(rename_all = "snake_case")]
 pub enum SortOrder {
     #[default]
     DateDesc,
@@ -113,27 +112,44 @@ pub struct ResolvedDownloadOptions {
 
 impl Config {
     pub fn load() -> AppResult<Self> {
-        let path = config_file_path()?;
+        Self::load_from(&config_file_path()?)
+    }
 
+    pub fn load_from(path: &Path) -> AppResult<Self> {
         if !path.exists() {
             return Ok(Self::default());
         }
 
-        let content = fs::read_to_string(&path)
+        let content = fs::read_to_string(path)
             .with_context(|| format!("读取配置文件失败: {}", path.display()))?;
 
-        toml::from_str(&content).map_err(Into::into)
+        let config = toml::from_str::<Self>(&content)?;
+        config.validate()?;
+        Ok(config)
     }
 
     pub fn save(&self) -> AppResult<()> {
         let dir = ensure_config_dir()?;
-        let path = dir.join(CONFIG_FILE_NAME);
+        self.save_to(&dir.join(CONFIG_FILE_NAME))
+    }
+
+    pub fn save_to(&self, path: &Path) -> AppResult<()> {
+        self.validate()?;
         let content = toml::to_string_pretty(self)?;
 
-        fs::write(&path, content)
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("创建配置目录失败: {}", parent.display()))?;
+        }
+
+        fs::write(path, content)
             .with_context(|| format!("写入配置文件失败: {}", path.display()))?;
 
         Ok(())
+    }
+
+    fn validate(&self) -> AppResult<()> {
+        validate_sort_order(self.download.sort)
     }
 
     pub fn resolve_download_options(
@@ -159,7 +175,7 @@ impl Config {
                 }
             });
 
-        Ok(ResolvedDownloadOptions {
+        let resolved = ResolvedDownloadOptions {
             directory: expand_home_dir(&directory)?,
             count: cli.count.or(env.count).unwrap_or(self.download.count),
             sort: cli.sort.or(env.sort).unwrap_or(self.download.sort),
@@ -177,18 +193,22 @@ impl Config {
                 .unwrap_or(self.download.with_tags),
             proxy_url,
             dry_run: cli.dry_run,
-        })
+        };
+
+        validate_sort_order(resolved.sort)?;
+        Ok(resolved)
     }
 }
 
 impl EnvOverrides {
-    pub fn from_process_env() -> Self {
-        Self {
+    pub fn from_process_env() -> AppResult<Self> {
+        Ok(Self {
             directory: env::var_os("PICALS_DOWNLOAD_DIRECTORY").map(PathBuf::from),
             count: parse_env_value("PICALS_DOWNLOAD_COUNT"),
             sort: env::var("PICALS_DOWNLOAD_SORT")
                 .ok()
-                .and_then(|value| SortOrder::from_str(&value, true).ok()),
+                .map(|value| parse_sort_value(&value))
+                .transpose()?,
             r18: parse_env_bool("PICALS_DOWNLOAD_R18"),
             ai: parse_env_bool("PICALS_DOWNLOAD_AI"),
             concurrent: parse_env_value("PICALS_DOWNLOAD_CONCURRENT"),
@@ -199,7 +219,7 @@ impl EnvOverrides {
                 .ok()
                 .or_else(|| env::var("HTTPS_PROXY").ok())
                 .filter(|value| !value.trim().is_empty()),
-        }
+        })
     }
 }
 
@@ -249,7 +269,7 @@ pub fn expand_home_dir(path: &Path) -> AppResult<PathBuf> {
 
 fn parse_env_value<T>(key: &str) -> Option<T>
 where
-    T: FromStr,
+    T: std::str::FromStr,
 {
     env::var(key).ok().and_then(|value| value.parse::<T>().ok())
 }
@@ -264,11 +284,44 @@ fn parse_env_bool(key: &str) -> Option<bool> {
         })
 }
 
+pub(crate) fn parse_sort_value(value: &str) -> AppResult<SortOrder> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "date_desc" => Ok(SortOrder::DateDesc),
+        "date_asc" => Ok(SortOrder::DateAsc),
+        "popular_desc" => Err(popular_sort_migration_error().into()),
+        _ => Err(invalid_sort_value_error(value).into()),
+    }
+}
+
+pub(crate) fn invalid_sort_value_error(value: &str) -> CrawlerError {
+    CrawlerError::InvalidInput(format!(
+        "无效的排序值: {}，可选值为 date_desc/date_asc",
+        value
+    ))
+}
+
+pub(crate) fn popular_sort_migration_error() -> CrawlerError {
+    CrawlerError::InvalidInput(POPULAR_SORT_MIGRATION_MESSAGE.to_string())
+}
+
+fn validate_sort_order(sort: SortOrder) -> AppResult<()> {
+    if sort == SortOrder::PopularDesc {
+        return Err(popular_sort_migration_error().into());
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use super::{Config, DownloadOverrides, EnvOverrides, SortOrder};
+    use tempfile::tempdir;
+
+    use super::{
+        Config, DownloadOverrides, EnvOverrides, POPULAR_SORT_MIGRATION_MESSAGE, SortOrder,
+        parse_sort_value,
+    };
 
     #[test]
     fn cli_env_config_default_priority_is_correct() {
@@ -276,7 +329,7 @@ mod tests {
         let env = EnvOverrides {
             directory: Some(PathBuf::from("/env")),
             count: Some(12),
-            sort: Some(SortOrder::PopularDesc),
+            sort: Some(SortOrder::DateAsc),
             r18: Some(true),
             ai: Some(false),
             concurrent: Some(16),
@@ -318,7 +371,6 @@ mod tests {
     fn config_value_is_used_when_no_override_exists() {
         let mut config = Config::default();
         config.download.count = 99;
-        config.download.sort = SortOrder::PopularDesc;
         config.proxy.url = "socks5://127.0.0.1:1080".to_string();
 
         let resolved = config
@@ -326,10 +378,55 @@ mod tests {
             .unwrap();
 
         assert_eq!(resolved.count, 99);
-        assert_eq!(resolved.sort, SortOrder::PopularDesc);
+        assert_eq!(resolved.sort, SortOrder::DateDesc);
         assert_eq!(
             resolved.proxy_url.as_deref(),
             Some("socks5://127.0.0.1:1080")
         );
+    }
+
+    #[test]
+    fn parse_sort_value_rejects_popular_sort() {
+        let error = parse_sort_value("popular_desc").unwrap_err();
+        assert!(format!("{error:#}").contains(POPULAR_SORT_MIGRATION_MESSAGE));
+    }
+
+    #[test]
+    fn config_load_rejects_popular_sort_in_history_file() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"[download]
+directory = "~/Pictures/Pixiv"
+count = 0
+sort = "popular_desc"
+r18 = false
+ai = true
+concurrent = 8
+timeout = 30
+retry = 3
+with_tags = false
+
+[proxy]
+url = ""
+"#,
+        )
+        .unwrap();
+
+        let error = Config::load_from(&path).unwrap_err();
+        assert!(format!("{error:#}").contains(POPULAR_SORT_MIGRATION_MESSAGE));
+    }
+
+    #[test]
+    fn resolve_download_options_rejects_popular_sort_from_existing_config() {
+        let mut config = Config::default();
+        config.download.sort = SortOrder::PopularDesc;
+
+        let error = config
+            .resolve_download_options(&EnvOverrides::default(), &DownloadOverrides::default())
+            .unwrap_err();
+
+        assert!(format!("{error:#}").contains(POPULAR_SORT_MIGRATION_MESSAGE));
     }
 }

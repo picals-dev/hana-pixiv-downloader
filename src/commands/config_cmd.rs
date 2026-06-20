@@ -1,11 +1,9 @@
 //! `picals-crawler config` 命令。
 
-use clap::ValueEnum;
-
 use crate::{
     auth::Credential,
     cli::config::SetConfigArgs,
-    config::{Config, SortOrder, config_dir},
+    config::{Config, config_dir, parse_sort_value},
     error::{AppResult, CrawlerError},
 };
 
@@ -34,14 +32,7 @@ pub async fn set(args: SetConfigArgs) -> AppResult<()> {
     match args.key.as_str() {
         "download.directory" => config.download.directory = args.value,
         "download.count" => config.download.count = parse_usize(&args.key, &args.value)?,
-        "download.sort" => {
-            config.download.sort = SortOrder::from_str(&args.value, true).map_err(|_| {
-                CrawlerError::InvalidInput(format!(
-                    "无效的排序值: {}，可选值为 date_desc/date_asc/popular_desc",
-                    args.value
-                ))
-            })?
-        }
+        "download.sort" => config.download.sort = parse_sort_value(&args.value)?,
         "download.r18" => config.download.r18 = parse_bool(&args.key, &args.value)?,
         "download.ai" => config.download.ai = parse_bool(&args.key, &args.value)?,
         "download.concurrent" => config.download.concurrent = parse_usize(&args.key, &args.value)?,
@@ -79,4 +70,30 @@ fn parse_u64(key: &str, value: &str) -> AppResult<u64> {
         .trim()
         .parse::<u64>()
         .map_err(|_| CrawlerError::InvalidInput(format!("{key} 需要无符号整数")).into())
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use crate::cli::config::SetConfigArgs;
+
+    use super::set;
+
+    #[tokio::test]
+    async fn config_set_rejects_popular_sort() {
+        let temp = tempdir().unwrap();
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", temp.path());
+        }
+
+        let error = set(SetConfigArgs {
+            key: "download.sort".to_string(),
+            value: "popular_desc".to_string(),
+        })
+        .await
+        .unwrap_err();
+
+        assert!(format!("{error:#}").contains("popular_desc 已不再支持"));
+    }
 }

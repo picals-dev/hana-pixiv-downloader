@@ -2,7 +2,7 @@
 title: "Picals Crawler 产品设计文档"
 tags: ["product", "design", "requirements", "cli", "pixiv"]
 created: 2026-06-16T00:00:00.000Z
-updated: 2026-06-17T00:00:00.000Z
+updated: 2026-06-19T00:00:00.000Z
 sources: ["_notes/nea/product-design.md"]
 links: ["picals-crawler-技术设计文档.md", "picals-crawler-项目理解基线.md", "typescript-原项目实现观察.md"]
 category: product
@@ -12,9 +12,9 @@ schemaVersion: 1
 
 # Picals-Crawler 产品设计文档
 
-> 版本：v0.1.0-draft
-> 最后更新：2026-06-16
-> 状态：设计中
+> 版本：v0.2.0-draft
+> 最后更新：2026-06-19
+> 状态：v0.2.0 / Phase 2 功能已完成，bookmark 已实现
 
 ---
 
@@ -61,7 +61,7 @@ schemaVersion: 1
 | `picals-crawler download illust <id>` | 下载单张作品的所有图片 | P1 |
 | `picals-crawler download bookmark` | 下载自己收藏的作品 | P1 |
 | `picals-crawler config show` | 查看当前配置 | P1 |
-| `picals-crawler config set` | 交互式修改配置 | P2 |
+| `picals-crawler config set <key> <value>` | 修改当前配置项 | P2 |
 
 ### 3.2 功能详情
 
@@ -71,8 +71,9 @@ schemaVersion: 1
 
 1. 欢迎信息
 2. 引导用户获取 PHPSESSID（带步骤说明，只需复制一个字段）
-3. 可选：设置默认下载目录（回车使用默认值 `~/Pictures/Pixiv/`）
-4. 凭据持久化至 `~/.config/picals-crawler/credentials`（权限 600）
+3. 使用当前 `PHPSESSID` 从已登录首页的响应头或 HTML 自动解析当前账号 `userId`，失败时允许手动输入兜底
+4. 可选：设置默认下载目录（回车使用默认值 `~/Pictures/Pixiv/`）
+5. 认证元数据持久化至 `~/.config/picals-crawler/credentials`（权限 600）
 
 **设计原则**：只做一次，用户永远不需要再想认证的事。
 
@@ -87,18 +88,18 @@ picals-crawler download user 12345678 --to ~/wallpaper/miku/
 - 支持数字 ID 和完整 URL 两种输入方式
 - URL 模式：用户直接从浏览器复制粘贴，零认知成本
 - 默认下载全部作品，按时间降序排列
-- 自动创建 `{画师名}({ID})/` 子目录
+- 当前实现使用 `{画师ID}/` 子目录
 - 下载过程中显示进度条、速度、ETA
 
 #### `picals-crawler download keyword <query>`
 
 ```
 picals-crawler download keyword "初音ミク"
-picals-crawler download keyword "オリジナル 女の子" --count 100 --sort popular
+picals-crawler download keyword "オリジナル 女の子" --count 100 --sort date_asc
 ```
 
 - 支持多关键词（空格分隔）
-- 选项：`--count` 数量、`--sort` 排序（date_desc / date_asc / popular_desc）、`--mode` 模式（all / safe / r18）
+- 选项：`--count` 数量、`--sort` 排序（date_desc / date_asc）、`--r18` 模式切换、`--no-ai`
 - 默认：全部结果、按时间降序、安全模式
 
 #### `picals-crawler download ranking`
@@ -110,8 +111,8 @@ picals-crawler download ranking --mode daily_r18
 ```
 
 - 排行模式：daily / weekly / monthly / daily_r18 / weekly_r18 / male / female
-- 默认：daily（今日插图榜），前 50 幅
-- 内容类型：默认 illust，可选 manga / ugoira
+- 默认：daily（今日插图榜）；若未指定 `--count`，当前实现按“下载全部抓到的结果”处理
+- 当前实现仅支持 illust 下载，不包含 manga / ugoira 专项模式
 
 #### `picals-crawler download illust <id>`
 
@@ -130,7 +131,7 @@ picals-crawler download bookmark --count 200
 ```
 
 - 下载自己收藏的作品
-- 需要认证（已在 setup 中完成）
+- 依赖 setup 中保存的认证元数据：`PHPSESSID + userId`
 
 ### 3.3 全局选项
 
@@ -138,7 +139,6 @@ picals-crawler download bookmark --count 200
 |---|---|
 | `--to <path>` | 覆盖下载目录 |
 | `--proxy <url>` | 代理地址（如 `socks5://127.0.0.1:1080`），也支持 `HTTPS_PROXY` 环境变量 |
-| `--verbose` | 显示详细日志 |
 | `--dry-run` | 只列出将要下载的内容，不实际下载 |
 
 ### 3.4 下载配置
@@ -148,11 +148,11 @@ picals-crawler download bookmark --count 200
 | 选项 | 默认值 | 说明 |
 |---|---|---|
 | `--count` | `0`（全部） | 下载数量 |
-| `--sort` | `date_desc` | 排序：date_desc / date_asc / popular_desc |
+| `--sort` | `date_desc` | 排序：date_desc / date_asc |
 | `--r18` | `false` | 是否包含 R-18 作品 |
 | `--no-ai` | `false` | 是否排除 AI 作品 |
 | `--concurrent` | `8` | 并发下载数 |
-| `--with-tags` | `true` | 是否同时下载 tags.json |
+| `--with-tags` | `false` | 是否同时导出 tags.json |
 
 ---
 
@@ -186,13 +186,12 @@ $ picals-crawler setup
 
   下载目录: █
 
-  ✅ 配置完成！认证信息已保存到 ~/.config/picals-crawler/credentials
+  ✅ 配置完成！认证信息与当前账号身份已保存。
 
   现在可以开始下载了：
 
     picals-crawler download user <画师ID>
-    picals-crawler download keyword <关键词>
-    picals-crawler download ranking
+    picals-crawler download bookmark
 
   查看完整帮助: picals-crawler --help
 ```
@@ -273,7 +272,7 @@ ai = true
 concurrent = 8
 timeout = 30
 retry = 3
-with_tags = true
+with_tags = false
 
 [proxy]
 url = ""               # socks5://127.0.0.1:1080
@@ -289,8 +288,8 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 
 | 平台 | 方式 |
 |---|---|
-| macOS | `brew install picals-crawler` |
-| Windows | `scoop install picals-crawler` |
+| macOS | 规划中：Homebrew formula |
+| Windows | 规划中：Scoop bucket |
 | Linux | `cargo install picals-crawler` 或 `.deb`/`AppImage` |
 | 通用 | 从 GitHub Releases 下载预编译二进制 |
 
@@ -303,7 +302,7 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 | 维度 | gallery-dl | PixivUtil2 | **picals-crawler** |
 |---|---|---|---|
 | 定位 | 通用下载器，200+ 站点 | 功能最全的 Pixiv 专用下载器 | 极简 Pixiv 下载器，面向普通用户 |
-| 安装 | brew/scoop/pip (需 Python) | pip (需 Python + FFmpeg) | brew/scoop/cargo (单二进制，无依赖) |
+| 安装 | brew/scoop/pip (需 Python) | pip (需 Python + FFmpeg) | 当前以 cargo / Release 二进制为主（单二进制，无依赖） |
 | 交互模型 | URL 驱动 | TUI 数字菜单 | 语义化命令 + URL 双模式 |
 | 认证 | OAuth 或手动写 cookie | 手动写 config.ini | 交互式引导，30 秒完成 |
 | 学习曲线 | 中等 | 陡峭 | 低 |
@@ -350,12 +349,16 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 - macOS / Windows 预编译二进制
 - GitHub Release 自动构建
 
+> 现状注记（2026-06-18）：上述主链路已经完成。当前仓库的主要实施目标已切换到 v0.2.0 / Phase 2。
+
 ### v0.2.0 — 功能完善
 
 - `download keyword / ranking / illust / bookmark`
 - `config show / set`
 - tags.json 保存
 - 彩色进度条（速度、ETA）
+
+> 现状注记（2026-06-20）：`download illust / keyword / ranking / bookmark`、`config show / set` 的 Phase 2 约束、`tags.json`、`.part` 恢复语义、速度与 ETA 统计 seam 已完成。当前实现采用“setup 保存 `userId` 认证元数据”的方案，bookmark 不再是 deferred/blocked。
 
 ### v0.3.0 — 体验打磨
 

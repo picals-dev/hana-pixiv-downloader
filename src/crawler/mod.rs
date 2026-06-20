@@ -4,6 +4,7 @@ pub mod bookmark;
 pub mod illust;
 pub mod keyword;
 pub mod ranking;
+pub mod shared;
 pub mod user;
 
 use crate::{auth::Credential, config::ResolvedDownloadOptions};

@@ -2,6 +2,7 @@
 
 mod config_cmd;
 mod download_bookmark;
+mod download_common;
 mod download_illust;
 mod download_keyword;
 mod download_ranking;

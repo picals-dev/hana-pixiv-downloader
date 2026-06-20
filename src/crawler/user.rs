@@ -1,20 +1,18 @@
-//! UserCrawler 骨架。
+//! UserCrawler。
 
 use std::time::Duration;
 
-use futures::{StreamExt, stream};
-use log::warn;
 use url::Url;
 
 use crate::{
     auth::Credential,
-    collector::{
-        PixivCollector, resolve_base_url,
-        selector::{select_page_original_urls, select_user_illust_ids},
-    },
-    config::{ResolvedDownloadOptions, SortOrder},
+    collector::{PixivCollector, resolve_base_url, selector::select_user_illust_ids},
+    config::ResolvedDownloadOptions,
     crawler::CrawlContext,
-    downloader::{DownloadResult, Downloader},
+    crawler::shared::{
+        collect_image_urls_for_illust_ids, download_urls, export_tags_json, sort_illust_ids,
+    },
+    downloader::DownloadResult,
     error::AppResult,
     utils::retry::retry_async,
 };
@@ -71,53 +69,28 @@ impl UserCrawler {
         if self.context.options.count > 0 && illust_ids.len() > self.context.options.count {
             illust_ids.truncate(self.context.options.count);
         }
-
-        let page_results = stream::iter(illust_ids.into_iter().map(|illust_id| {
-            let collector = collector.clone();
-            let retry_count = self.context.options.retry;
-
-            async move {
-                let response = retry_async(retry_count, Duration::from_millis(200), |_| {
-                    let collector = collector.clone();
-                    let illust_id = illust_id.clone();
-
-                    async move { collector.fetch_illust_pages(&illust_id).await }
-                })
-                .await;
-
-                (illust_id, response)
-            }
-        }))
-        .buffer_unordered(self.context.options.concurrent.max(1))
-        .collect::<Vec<_>>()
+        let (urls, mut failed_units) = collect_image_urls_for_illust_ids(
+            &collector,
+            illust_ids.clone(),
+            &self.context.options,
+        )
         .await;
 
-        let mut urls = Vec::new();
-        let mut failed_units = 0usize;
-
-        for (illust_id, response) in page_results {
-            match response {
-                Ok(value) => match select_page_original_urls(&value) {
-                    Ok(mut image_urls) => urls.append(&mut image_urls),
-                    Err(error) => {
-                        failed_units += 1;
-                        warn!("解析作品 {illust_id} 的图片 URL 失败: {error}");
-                    }
-                },
-                Err(error) => {
-                    failed_units += 1;
-                    warn!("获取作品 {illust_id} 的图片 URL 失败: {error}");
-                }
-            }
-        }
-
         let output_directory = self.context.options.directory.join(&self.artist_id);
-        let downloader = Downloader::new(
+        failed_units += export_tags_json(
+            &collector,
+            &illust_ids,
+            &output_directory,
+            &self.context.options,
+        )
+        .await;
+        let mut result = download_urls(
             self.context.options.clone(),
             output_directory,
             self.base_url.clone(),
-        )?;
-        let mut result = downloader.download(&urls).await?;
+            &urls,
+        )
+        .await?;
 
         result.failed += failed_units;
         result.total += failed_units;
@@ -133,35 +106,11 @@ impl UserCrawler {
         )
     }
 }
-
-fn sort_illust_ids(illust_ids: &mut [String], sort: SortOrder) -> AppResult<()> {
-    let mut keyed = illust_ids
-        .iter()
-        .map(|id| {
-            id.parse::<u64>()
-                .map(|value| (value, id.clone()))
-                .map_err(|_| crate::error::CrawlerError::Parse(format!("作品 ID 不是数字: {id}")))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    keyed.sort_by_key(|(value, _)| *value);
-
-    if sort == SortOrder::DateDesc {
-        keyed.reverse();
-    }
-
-    for (slot, (_, id)) in illust_ids.iter_mut().zip(keyed) {
-        *slot = id;
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use crate::config::SortOrder;
 
-    use super::sort_illust_ids;
+    use crate::crawler::shared::sort_illust_ids;
 
     #[test]
     fn illust_ids_can_be_sorted_descending_by_default() {

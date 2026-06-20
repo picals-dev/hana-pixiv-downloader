@@ -50,6 +50,9 @@ pub enum CrawlerError {
     #[error("未找到认证信息，请先运行 picals-crawler setup")]
     MissingCredential,
 
+    #[error("当前认证信息缺少 userId，请重新运行 picals-crawler setup")]
+    MissingUserId,
+
     #[error("未找到配置目录: {0}")]
     MissingConfigDir(PathBuf),
 

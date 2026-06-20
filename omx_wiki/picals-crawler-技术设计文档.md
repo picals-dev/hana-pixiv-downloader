@@ -2,7 +2,7 @@
 title: "Picals Crawler 技术设计文档"
 tags: ["technical", "design", "architecture", "rust", "cli"]
 created: 2026-06-16T00:00:00.000Z
-updated: 2026-06-17T00:00:00.000Z
+updated: 2026-06-19T00:00:00.000Z
 sources: ["_notes/nea/technical-design.md"]
 links: ["picals-crawler-产品设计文档.md", "picals-crawler-项目理解基线.md", "typescript-原项目实现观察.md"]
 category: architecture
@@ -13,8 +13,8 @@ schemaVersion: 1
 # Picals-Crawler 技术设计文档
 
 > 版本：v0.2.0-draft
-> 最后更新：2026-06-16
-> 状态：技术栈确认，待开发
+> 最后更新：2026-06-19
+> 状态：Phase 2 功能已完成，bookmark 已进入主链路
 
 ---
 
@@ -103,7 +103,7 @@ picals-crawler/
 │   │   ├── mod.rs
 │   │   └── credential.rs        # 凭据读取、写入、验证
 │   ├── crawler/
-│   │   ├── mod.rs               # Crawler trait 定义
+│   │   ├── mod.rs               # CrawlContext 与 crawler 模块汇总
 │   │   ├── user.rs              # UserCrawler
 │   │   ├── keyword.rs           # KeywordCrawler
 │   │   ├── ranking.rs           # RankingCrawler
@@ -159,7 +159,7 @@ picals-crawler/
     │                         │
     ▼                         ▼
   auth::                  crawler::
-  credential              Crawler trait
+  credential              CrawlContext
                               │
                     ┌─────────┼─────────┐
                     ▼         ▼         ▼
@@ -170,35 +170,26 @@ picals-crawler/
                           image (单图下载)
 ```
 
-### 3.2 Crawler trait
+### 3.2 Crawler 组织方式
 
-```rust
-#[async_trait]
-pub trait Crawler {
-    /// 第一阶段：收集 artwork IDs
-    async fn collect(&self) -> Result<Vec<String>>;
+当前实现没有引入统一 `Crawler trait`。项目采用更直接的组织方式：
 
-    /// 第二阶段：收集图片 URLs（对每个 artwork 调用 pages API）
-    async fn collect_urls(&self, ids: &[String]) -> Result<Vec<String>>;
+- `crawler/mod.rs` 提供 `CrawlContext`
+- `user / keyword / ranking / illust / bookmark` 各自维护独立 `run()` 主流程
+- 共用逻辑下沉到 `crawler/shared.rs`，例如：
+  - 作品 ID → 图片 URL 收集
+  - `tags.json` 导出
+  - ID 排序
+  - 下载汇总
 
-    /// 完整流程：collect → collect_urls → download
-    async fn run(&self) -> Result<DownloadResult> {
-        let ids = self.collect().await?;
-        let urls = self.collect_urls(&ids).await?;
-        self.download(&urls).await
-    }
-
-    async fn download(&self, urls: &[String]) -> Result<DownloadResult>;
-}
-```
-
-五种 Crawler 实现各自的 `collect()` 逻辑，共用 `collect_urls()` 和 `download()`。
+这样可以复用主链路能力，同时避免为 Phase 2 引入额外抽象层。
 
 ### 3.3 认证模块
 
 ```rust
 pub struct Credential {
     pub phpsessid: String,
+    pub user_id: Option<String>,
 }
 
 impl Credential {
@@ -213,7 +204,7 @@ impl Credential {
 }
 ```
 
-认证模块只负责凭据的读写，不负责获取（获取在 `setup` 命令中通过 `inquire` 交互完成）。
+认证模块负责凭据的读写与校验，不负责浏览器侧获取；`setup` 会先采集 `PHPSESSID`，再优先从登录首页的响应头或 HTML 中自动解析当前账号 `userId`，失败时允许手动输入兜底。
 
 ### 3.4 配置模块
 
@@ -359,7 +350,7 @@ download_image(url, target_path)
 | 关键词搜索 | `GET /ajax/search/artworks/{keyword}` | 部分需要 |
 | 排行榜 | `GET /ranking.php?mode={mode}&format=json` | 部分需要 |
 | 收藏列表 | `GET /ajax/user/{id}/illusts/bookmarks` | 需要 |
-| 作品详情（含 tags） | `GET /artworks/{id}` (HTML) | 否 |
+| 作品详情（含 tags） | `GET /ajax/illust/{id}` | 部分需要 |
 
 ---
 
@@ -427,9 +418,9 @@ jobs:
 
 ### 发布检查清单
 
-- [ ] `cargo test` 全部通过
-- [ ] `cargo clippy` 无 warning
-- [ ] `cargo fmt --check` 通过
+- [x] `cargo test` 全部通过
+- [x] `cargo clippy` 无 warning
+- [x] `cargo fmt --check` 通过
 - [ ] 手动测试 macOS 二进制
 - [ ] 手动测试 Windows 二进制
 - [ ] tag push → CI 构建成功
@@ -441,9 +432,9 @@ jobs:
 ## 八、安全考虑
 
 - **凭据存储**：`~/.config/picals-crawler/credentials` 权限 600（仅 owner 可读写）
-- **日志安全**：`--verbose` 模式下不输出 cookie 值，只输出 `PHPSESSID=***`
+- **日志安全**：当前实现不会在用户可见输出中打印 `PHPSESSID` 明文；凭据展示场景仅暴露普通配置与认证状态
 - **HTTPS 强制**：所有 Pixiv API 请求使用 HTTPS
-- **TLS 验证**：默认启用 TLS 证书验证（可通过 `--insecure` 关闭，但 warning）
+- **TLS 验证**：默认启用 TLS 证书验证
 - **代理安全**：SOCKS5 代理使用 `reqwest` 内置支持，不依赖外部工具
 
 ---
@@ -527,28 +518,32 @@ tokio-test = "0.4"          # tokio 测试工具
 **目标**：跑通 `download user` 完整链路
 
 - [x] 项目结构搭建（Cargo.toml、目录结构）
-- [ ] `cli/` 模块：clap 命令定义，`download user` 子命令
-- [ ] `auth/` 模块：凭据读写
-- [ ] `config.rs`：配置加载
-- [ ] `crawler/user.rs`：UserCrawler 实现
-- [ ] `collector/`：API 调用 + 响应解析
-- [ ] `downloader/`：图片下载 + 重试 + 完整性校验
-- [ ] `utils/progress.rs`：基础进度条
-- [ ] `commands/setup.rs`：交互式认证引导
-- [ ] `error.rs`：错误类型定义
-- [ ] `tests/`：selector 单元测试
-- [ ] GitHub Actions 多平台构建
+- [x] `cli/` 模块：clap 命令定义，`download user` 子命令
+- [x] `auth/` 模块：凭据读写
+- [x] `config.rs`：配置加载
+- [x] `crawler/user.rs`：UserCrawler 实现
+- [x] `collector/`：API 调用 + 响应解析
+- [x] `downloader/`：图片下载 + 重试 + 完整性校验
+- [x] `utils/progress.rs`：基础进度条
+- [x] `commands/setup.rs`：交互式认证引导
+- [x] `error.rs`：错误类型定义
+- [x] `tests/`：selector 单元测试
+- [x] GitHub Actions 多平台构建
+
+> 现状说明（2026-06-18）：Phase 1 主链路已完成。当前仍未完成的用户体验项，如速度/ETA、`tags.json`、更完整的断点续传语义，留在 Phase 2 处理。
 
 ### Phase 2 — 功能完善（预计 2-3 周）
 
-- [ ] `download keyword`：KeywordCrawler
-- [ ] `download ranking`：RankingCrawler
-- [ ] `download illust`：IllustCrawler
-- [ ] `download bookmark`：BookmarkCrawler
-- [ ] `config show/set` 命令
-- [ ] 断点续传
-- [ ] tags.json 保存
-- [ ] 精致进度条（速度、ETA）
+- [x] `download keyword`：KeywordCrawler
+- [x] `download ranking`：RankingCrawler
+- [x] `download illust`：IllustCrawler
+- [x] `download bookmark`：基于 setup 保存的 `userId` 完成收藏下载闭环
+- [x] `config show/set` 命令（已补齐 `download.sort` 约束、迁移错误与测试）
+- [x] 断点续传（本轮收敛为 `.part` 清理/覆盖与成品文件跳过）
+- [x] tags.json 保存
+- [x] 精致进度条（速度、ETA 统计 seam）
+
+> 现状说明（2026-06-20）：Phase 2 的功能能力已经落地并通过 `cargo fmt --check`、`cargo check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets`。当前实现采用“setup 保存 `userId` 认证元数据”的方案，`download bookmark` 已进入主链路，实现了收藏分页、去重、count 截断、`tags.json` 导出与下载汇总。
 
 ### Phase 3 — 体验打磨（预计 1-2 周）
 

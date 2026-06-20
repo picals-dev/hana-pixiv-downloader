@@ -85,6 +85,9 @@ impl Downloader {
             async move {
                 let outcome = downloader.download_one(&url).await;
                 progress.inc(1);
+                if let DownloadOutcome::Downloaded(bytes) = outcome {
+                    progress.record_downloaded_bytes(bytes);
+                }
                 outcome
             }
         }))
@@ -133,6 +136,7 @@ impl Downloader {
         };
 
         let temp_path = temporary_download_path(&target_path);
+        let _ = fs::remove_file(&temp_path);
         let url = url.to_string();
         let client = self.client.clone();
         let retry_count = self.options.retry;
@@ -225,4 +229,20 @@ fn temporary_download_path(path: &Path) -> PathBuf {
     }
 
     path.with_extension(extension)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::temporary_download_path;
+
+    #[test]
+    fn temporary_path_uses_part_extension() {
+        let path = PathBuf::from("/tmp/a.png");
+        assert_eq!(
+            temporary_download_path(&path),
+            PathBuf::from("/tmp/a.png.part")
+        );
+    }
 }
