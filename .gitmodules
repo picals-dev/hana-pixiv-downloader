@@ -1,3 +1,6 @@
 [submodule "repos/picals-crawler-ts"]
 	path = repos/picals-crawler-ts
 	url = git@github.com:picals-dev/crawler.git
+[submodule "repos/hana-music-api"]
+	path = repos/hana-music-api
+	url = git@github.com:nonhana/hana-music-api.git
