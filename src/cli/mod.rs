@@ -33,7 +33,7 @@ pub enum Command {
     /// 交互式认证引导与配置初始化
     Setup,
     /// 下载 Pixiv 图片
-    Download(DownloadCommand),
+    Download(Box<DownloadCommand>),
     /// 重试失败清单中的可重试项
     Retry(RetryCommand),
     /// 查看或修改配置

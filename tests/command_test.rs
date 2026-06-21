@@ -52,7 +52,7 @@ fn ranking_cli_accepts_positional_mode() {
 
     match cli.command {
         picals_crawler::cli::Command::Download(download) => match download.target {
-            DownloadSubcommand::Ranking(args) => {
+            Some(DownloadSubcommand::Ranking(args)) => {
                 assert_eq!(
                     args.mode,
                     Some(picals_crawler::cli::download::RankingMode::Daily)
@@ -176,12 +176,54 @@ fn keyword_cli_still_uses_query_and_r18_only() {
 
     match cli.command {
         picals_crawler::cli::Command::Download(download) => match download.target {
-            DownloadSubcommand::Keyword(args) => {
+            Some(DownloadSubcommand::Keyword(args)) => {
                 assert_eq!(args.query, "初音ミク");
                 assert!(args.r18);
             }
             _ => panic!("expected keyword command"),
         },
+        _ => panic!("expected download command"),
+    }
+}
+
+#[test]
+fn direct_download_cli_accepts_pixiv_url() {
+    let cli = Cli::parse_from([
+        "picals-crawler",
+        "download",
+        "https://www.pixiv.net/users/12345678",
+        "--dry-run",
+    ]);
+
+    match cli.command {
+        picals_crawler::cli::Command::Download(download) => {
+            assert!(download.target.is_none());
+            assert_eq!(
+                download.direct.pixiv_url.as_deref(),
+                Some("https://www.pixiv.net/users/12345678")
+            );
+            assert!(download.direct.common.dry_run);
+        }
+        _ => panic!("expected download command"),
+    }
+}
+
+#[test]
+fn direct_download_cli_accepts_encoded_tag_url() {
+    let cli = Cli::parse_from([
+        "picals-crawler",
+        "download",
+        "https://www.pixiv.net/tags/%E5%88%9D%E9%9F%B3%E3%83%9F%E3%82%AF/artworks",
+    ]);
+
+    match cli.command {
+        picals_crawler::cli::Command::Download(download) => {
+            assert!(download.target.is_none());
+            assert_eq!(
+                download.direct.pixiv_url.as_deref(),
+                Some("https://www.pixiv.net/tags/%E5%88%9D%E9%9F%B3%E3%83%9F%E3%82%AF/artworks")
+            );
+        }
         _ => panic!("expected download command"),
     }
 }

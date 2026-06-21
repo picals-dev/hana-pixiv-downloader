@@ -7,9 +7,13 @@ use clap::{ArgAction, Args, Subcommand, ValueEnum};
 use crate::config::{DownloadOverrides, SortOrder};
 
 #[derive(Debug, Clone, Args)]
+#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
 pub struct DownloadCommand {
     #[command(subcommand)]
-    pub target: DownloadSubcommand,
+    pub target: Option<DownloadSubcommand>,
+
+    #[command(flatten)]
+    pub direct: DirectDownloadArgs,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -24,6 +28,19 @@ pub enum DownloadSubcommand {
     Illust(IllustArgs),
     /// 下载当前账号的收藏
     Bookmark(BookmarkArgs),
+}
+
+#[derive(Debug, Clone, Default, Args)]
+pub struct DirectDownloadArgs {
+    #[arg(
+        value_name = "PIXIV_URL",
+        help = "直接粘贴 Pixiv 用户、作品或标签页面 URL",
+        required = true
+    )]
+    pub pixiv_url: Option<String>,
+
+    #[command(flatten)]
+    pub common: CommonDownloadArgs,
 }
 
 #[derive(Debug, Clone, Default, Args)]

@@ -95,6 +95,7 @@ pub async fn run() -> AppResult<()> {
     println!("  picals-crawler config set auth.phpsessid <PHPSESSID>");
     println!("  picals-crawler config set auth.user_id <USER_ID>");
     println!("  picals-crawler download user <画师ID>");
+    println!("  picals-crawler download <Pixiv URL>");
     println!("  picals-crawler download bookmark");
     println!("查看完整帮助: picals-crawler --help");
 

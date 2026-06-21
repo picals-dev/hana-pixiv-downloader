@@ -3,6 +3,7 @@
 mod config_cmd;
 mod download_bookmark;
 mod download_common;
+mod download_direct;
 mod download_illust;
 mod download_keyword;
 mod download_ranking;
@@ -19,11 +20,12 @@ pub async fn dispatch(cli: Cli) -> AppResult<()> {
     match cli.command {
         Command::Setup => setup::run().await,
         Command::Download(download) => match download.target {
-            DownloadSubcommand::User(args) => download_user::run(args).await,
-            DownloadSubcommand::Keyword(args) => download_keyword::run(args).await,
-            DownloadSubcommand::Ranking(args) => download_ranking::run(args).await,
-            DownloadSubcommand::Illust(args) => download_illust::run(args).await,
-            DownloadSubcommand::Bookmark(args) => download_bookmark::run(args).await,
+            Some(DownloadSubcommand::User(args)) => download_user::run(args).await,
+            Some(DownloadSubcommand::Keyword(args)) => download_keyword::run(args).await,
+            Some(DownloadSubcommand::Ranking(args)) => download_ranking::run(args).await,
+            Some(DownloadSubcommand::Illust(args)) => download_illust::run(args).await,
+            Some(DownloadSubcommand::Bookmark(args)) => download_bookmark::run(args).await,
+            None => download_direct::run(download.direct).await,
         },
         Command::Retry(args) => retry_cmd::run(args).await,
         Command::Config(config) => match config.action {
