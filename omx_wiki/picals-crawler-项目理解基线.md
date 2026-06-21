@@ -2,7 +2,7 @@
 title: "Picals Crawler 项目理解基线"
 tags: ["project", "baseline", "architecture", "product", "rust"]
 created: 2026-06-17T03:17:25.240Z
-updated: 2026-06-19T00:00:00.000Z
+updated: 2026-06-21T07:20:39.000Z
 sources: []
 links: ["typescript-原项目实现观察.md"]
 category: architecture
@@ -15,7 +15,7 @@ schemaVersion: 1
 ## 产品定位
 
 - 面向最终用户的 Pixiv 图片下载 CLI，而不是库、浏览器扩展或 Web 应用。
-- 核心承诺是开箱即用：首次通过 setup 完成 `PHPSESSID + userId` 认证元数据初始化与默认目录配置，之后用户用一行命令执行下载。
+- 核心承诺是开箱即用：首次通过 setup 完成 `PHPSESSID + userId` 认证元数据初始化、五类下载根目录与通用下载参数配置，之后用户用一行命令执行下载。
 
 ## 设计目标
 
@@ -34,33 +34,30 @@ schemaVersion: 1
 
 ## 当前仓库状态
 
-- Rust CLI 骨架已经落地，不再是初始化仓库：
-  - `src/main.rs` 已完成 CLI 解析与命令分发
-  - `Cargo.toml` 已接入 `tokio / reqwest / clap / inquire / indicatif / serde / toml / eyre / thiserror` 等核心依赖
-  - `auth / cli / collector / commands / config / crawler / downloader / error / utils` 模块目录已经成型
-- Phase 1 的核心目标“跑通 `download user` 完整链路”已经完成：
-  - `setup` 可保存 `PHPSESSID`、当前账号 `userId` 与默认下载目录
-  - `download user` 已打通配置合并、凭据读取、作品 ID 采集、图片 URL 采集、并发下载、跳过已存在文件、失败汇总
-  - `cargo test` 当前通过，且存在 selector 单测与 `wiremock` 集成测试
-- Phase 2 的主体实现已经完成：
-  - `download illust / keyword / ranking` 已落地并补齐主链路测试
-  - `download bookmark` 已落地，并基于 setup 保存的 `userId` 完成收藏分页、去重、count 截断、`tags.json` 导出与下载闭环
-  - `config show/set` 已完成 Phase 2 约束收敛：`download.sort` 只允许 `date_desc / date_asc`，`popular_desc` 作为迁移错误处理
-  - `tags.json` 导出、`.part` 恢复语义、速度与 ETA 的统计 seam 已实现并有测试覆盖
-- 当前的主要工作重心已从“推进 Phase 2”切换为“同步文档状态并为后续体验打磨做准备”。
+- 早期主链路和 Phase 2 能力已经完成：
+  - `download user / illust / keyword / ranking / bookmark` 均已进入主链路
+  - `config show/set`、`tags.json`、`.part` 恢复语义、速度与 ETA 统计 seam 已实现
+- 本轮 UX 优化已经完成：
+  - `setup` 改为多步向导，完整展示凭据、五类 mode roots、通用下载参数与代理配置
+  - `config show` 统一展示凭据与普通配置；`config set` 支持 `auth.phpsessid / auth.user_id / download.roots.*`
+  - 下载目录模型升级为五类模式 root，并统一通过共享布局解析器输出 `context/illustId/illustId_pn.ext`
+  - 请求层已统一到 `PixivRequestRuntime`，覆盖 `429 cooldown / Retry-After / backoff / jitter / fresh-on-retry`
+  - 失败项已升级为结构化 manifest，并支持 `picals-crawler retry <manifest-path>` 回放
+  - 测试隔离已统一收口到 `src/test_support.rs`
+- 当前仓库的主要工作重心已从“实现 UX 优化”切换到“整理文档、准备后续发布与体验打磨”。
 
 ## 当前阶段判断
 
 - **Phase 1**：已完成。
-- **Phase 2**：主体已完成。
-  - 已完成：`download illust / keyword / ranking / bookmark`、`config show/set` 的 Phase 2 约束、`tags.json`、`.part` 恢复语义、速度与 ETA 统计 seam
-- **Phase 3 起点**：
-  - 可以开始体验打磨、发布准备和文档整理
+- **Phase 2**：已完成。
+- **本轮 UX 优化**：已完成，并通过 `cargo fmt --check / cargo check / cargo clippy --all-targets -- -D warnings / cargo test --all-targets`。
+- **后续起点**：
+  - 可以开始 README、安装分发、发布准备与后续体验打磨。
 
 ## 当前主要偏差
 
-- 产品文档仍把 `--with-tags` 默认值描述为 `true`，但当前实现保持显式 opt-in，默认值仍为 `false`。
-- 需继续保持产品文档与技术设计文档中的 setup / bookmark 说明和当前代码事实一致，避免后续文档回漂。
+- 需继续保持产品/技术文档中的“明文凭据可见性属于冻结产品合同”这一事实一致，避免后续按默认安全偏好回滚。
+- 当前 replay / manifest 结构已经稳定，但若后续要继续抽边界，应在不破坏现有 CLI 合同的前提下进行。
 
 ## 关联页面
 

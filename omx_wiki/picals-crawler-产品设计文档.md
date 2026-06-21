@@ -2,7 +2,7 @@
 title: "Picals Crawler 产品设计文档"
 tags: ["product", "design", "requirements", "cli", "pixiv"]
 created: 2026-06-16T00:00:00.000Z
-updated: 2026-06-19T00:00:00.000Z
+updated: 2026-06-21T07:20:39.000Z
 sources: ["_notes/nea/product-design.md"]
 links: ["picals-crawler-技术设计文档.md", "picals-crawler-项目理解基线.md", "typescript-原项目实现观察.md"]
 category: product
@@ -12,9 +12,9 @@ schemaVersion: 1
 
 # Picals-Crawler 产品设计文档
 
-> 版本：v0.2.0-draft
-> 最后更新：2026-06-19
-> 状态：v0.2.0 / Phase 2 功能已完成，bookmark 已实现
+> 版本：v0.3.0-draft
+> 最后更新：2026-06-21
+> 状态：UX 优化主链已落地并通过验证
 
 ---
 
@@ -72,10 +72,19 @@ schemaVersion: 1
 1. 欢迎信息
 2. 引导用户获取 PHPSESSID（带步骤说明，只需复制一个字段）
 3. 使用当前 `PHPSESSID` 从已登录首页的响应头或 HTML 自动解析当前账号 `userId`，失败时允许手动输入兜底
-4. 可选：设置默认下载目录（回车使用默认值 `~/Pictures/Pixiv/`）
-5. 认证元数据持久化至 `~/.config/picals-crawler/credentials`（权限 600）
+4. 逐项展示并允许修改五类下载根目录：`illust / user / bookmark / keyword / ranking`
+5. 逐项展示并允许修改通用下载参数：`count / sort / r18 / ai / concurrent / timeout / retry / with_tags`
+6. 可选：设置默认代理 `proxy.url`
+7. 认证元数据持久化至 `~/.config/picals-crawler/credentials`（权限 600）
 
 **设计原则**：只做一次，用户永远不需要再想认证的事。
+
+**当前合同**：
+
+- setup 中 `PHPSESSID` 输入与最终确认摘要都保持明文，便于用户完整核对。
+- setup 正文必须提示“会明文显示凭据，避免录屏或共享屏幕”。
+- `config show` 默认统一展示凭据与普通配置，并显式提示输出包含敏感凭据。
+- `config set` 必须支持 `auth.phpsessid` 与 `auth.user_id`。
 
 #### `picals-crawler download user <id|url>`
 
@@ -88,7 +97,7 @@ picals-crawler download user 12345678 --to ~/wallpaper/miku/
 - 支持数字 ID 和完整 URL 两种输入方式
 - URL 模式：用户直接从浏览器复制粘贴，零认知成本
 - 默认下载全部作品，按时间降序排列
-- 当前实现使用 `{画师ID}/` 子目录
+- 当前实现使用 `user_root/{userId}/{illustId}/illustId_pn.ext`
 - 下载过程中显示进度条、速度、ETA
 
 #### `picals-crawler download keyword <query>`
@@ -101,6 +110,7 @@ picals-crawler download keyword "オリジナル 女の子" --count 100 --sort d
 - 支持多关键词（空格分隔）
 - 选项：`--count` 数量、`--sort` 排序（date_desc / date_asc）、`--r18` 模式切换、`--no-ai`
 - 默认：全部结果、按时间降序、安全模式
+- 当前实现使用 `keyword_root/{规范化关键词}/{illustId}/illustId_pn.ext`
 
 #### `picals-crawler download ranking`
 
@@ -113,6 +123,7 @@ picals-crawler download ranking --mode daily_r18
 - 排行模式：daily / weekly / monthly / daily_r18 / weekly_r18 / male / female
 - 默认：daily（今日插图榜）；若未指定 `--count`，当前实现按“下载全部抓到的结果”处理
 - 当前实现仅支持 illust 下载，不包含 manga / ugoira 专项模式
+- 当前实现使用 `ranking_root/{mode}/{illustId}/illustId_pn.ext`
 
 #### `picals-crawler download illust <id>`
 
@@ -122,6 +133,7 @@ picals-crawler download illust 12345678
 
 - 下载单张作品的所有图片（Pixiv 上多图作品用 `_p0`、`_p1` 等区分）
 - 适用于只想下载特定一张图的场景
+- 当前实现使用 `illust_root/{illustId}/illustId_pn.ext`
 
 #### `picals-crawler download bookmark`
 
@@ -132,6 +144,7 @@ picals-crawler download bookmark --count 200
 
 - 下载自己收藏的作品
 - 依赖 setup 中保存的认证元数据：`PHPSESSID + userId`
+- 当前实现使用 `bookmark_root/{当前账号userId}/{illustId}/illustId_pn.ext`
 
 ### 3.3 全局选项
 
@@ -140,6 +153,11 @@ picals-crawler download bookmark --count 200
 | `--to <path>` | 覆盖下载目录 |
 | `--proxy <url>` | 代理地址（如 `socks5://127.0.0.1:1080`），也支持 `HTTPS_PROXY` 环境变量 |
 | `--dry-run` | 只列出将要下载的内容，不实际下载 |
+
+**当前 `--to` 合同**：
+
+- `--to` 覆盖的是当前模式对应的 root，而不是最终图片目录。
+- 最终输出仍会追加该模式自己的 context / illust 目录层级。
 
 ### 3.4 下载配置
 
@@ -153,6 +171,16 @@ picals-crawler download bookmark --count 200
 | `--no-ai` | `false` | 是否排除 AI 作品 |
 | `--concurrent` | `8` | 并发下载数 |
 | `--with-tags` | `false` | 是否同时导出 tags.json |
+
+### 3.5 配置可见性
+
+- `config show` 当前统一输出：
+  - `auth.phpsessid`
+  - `auth.user_id`
+  - `download.roots.*`
+  - 通用下载参数
+  - `proxy.url`
+- `download.directory` 已冻结为历史兼容读键，不再作为主配置面展示或写入。
 
 ---
 
@@ -248,6 +276,17 @@ $ picals-crawler download user 12345678
 - 网络错误时自动重试（默认 3 次），并显示重试进度
 - 部分下载失败不影响整体流程，最后汇总失败列表
 
+### 4.5 失败补救闭环
+
+- 命令结束后，若存在 `retryable=true` 的失败记录，会自动做一次低并发补拉。
+- 若仍有失败，系统会把失败项落盘为结构化 manifest，并输出唯一入口：
+
+```bash
+picals-crawler retry <manifest-path>
+```
+
+- `retry` 命令默认只回放 `retryable=true` 的记录；不可重试项会被明确跳过并计数。
+
 ---
 
 ## 五、配置体系
@@ -263,8 +302,14 @@ $ picals-crawler download user 12345678
 ### 5.2 config.toml 结构
 
 ```toml
+[download.roots]
+illust = "~/Pictures/Pixiv/illust"
+user = "~/Pictures/Pixiv/user"
+bookmark = "~/Pictures/Pixiv/bookmark"
+keyword = "~/Pictures/Pixiv/keyword"
+ranking = "~/Pictures/Pixiv/ranking"
+
 [download]
-directory = "~/Pictures/Pixiv"
 count = 0              # 0 = 全部
 sort = "date_desc"
 r18 = false
@@ -316,7 +361,7 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 ## 八、非功能需求
 
 - **性能**：单作品下载 < 5s（正常网络），100 幅作品批量下载 < 5min（8 并发）
-- **可靠性**：网络错误自动重试 3 次，支持断点续传
+- **可靠性**：统一请求层对 `429 / 5xx / timeout` 做收敛；失败项持久化为 manifest，并可通过 `retry` 回放
 - **兼容性**：macOS (aarch64 + x86_64)、Windows (x86_64)、Linux (x86_64)
 - **安全性**：凭据文件权限 600，敏感信息不在日志中输出
 - **可维护性**：Pixiv API 变更时，只需修改 selector 模块
@@ -366,6 +411,8 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 - Scoop bucket 创建
 - 错误信息中文化完善
 - 项目文档（中文 README）
+
+> 现状注记（2026-06-21）：本轮 UX 优化主链已完成并通过 `cargo fmt --check`、`cargo check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets`。当前产品合同已更新为：setup/config 对凭据与配置全可见、五类模式 root 已分离、批量模式按作品目录组织、请求层具备 429 收敛与统一重试策略、失败项持久化为 manifest 并支持 `picals-crawler retry <manifest-path>` 回放。
 
 ### v1.0.0 — 正式发布
 

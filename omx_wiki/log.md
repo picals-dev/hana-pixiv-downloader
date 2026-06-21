@@ -39,3 +39,14 @@
 ## [2026-06-17T03:17:25.316Z] lint
 - **Pages:** picals-crawler-项目理解基线.md
 - **Summary:** Lint: 1 issues (1 orphan, 0 stale, 0 broken, 0 contradictions)
+
+## [2026-06-21T07:20:39.000Z] add
+- **Pages:** picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-项目理解基线.md, picals-crawler-ux-优化执行记录-2026-06-21.md
+- **Summary:** Updated wiki for completed UX optimization execution, including product contract, technical modules, baseline status, and session log
+## [2026-06-21T07:30:26.969Z] lint
+- **Pages:** picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md
+- **Summary:** Lint: 4 issues (1 orphan, 0 stale, 0 broken, 1 contradictions)
+
+## [2026-06-21T16:10:00.000Z] add
+- **Pages:** picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, index.md
+- **Summary:** Added research report for download preview feasibility and ranking boundary, and refreshed wiki index

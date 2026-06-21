@@ -2,7 +2,7 @@
 title: "Picals Crawler 技术设计文档"
 tags: ["technical", "design", "architecture", "rust", "cli"]
 created: 2026-06-16T00:00:00.000Z
-updated: 2026-06-19T00:00:00.000Z
+updated: 2026-06-21T07:20:39.000Z
 sources: ["_notes/nea/technical-design.md"]
 links: ["picals-crawler-产品设计文档.md", "picals-crawler-项目理解基线.md", "typescript-原项目实现观察.md"]
 category: architecture
@@ -12,9 +12,9 @@ schemaVersion: 1
 
 # Picals-Crawler 技术设计文档
 
-> 版本：v0.2.0-draft
-> 最后更新：2026-06-19
-> 状态：Phase 2 功能已完成，bookmark 已进入主链路
+> 版本：v0.3.0-draft
+> 最后更新：2026-06-21
+> 状态：UX 优化主链已落地并通过验证
 
 ---
 
@@ -114,9 +114,15 @@ picals-crawler/
 │   │   └── selector.rs          # API 响应解析函数
 │   ├── downloader/
 │   │   ├── mod.rs               # 下载管理器
-│   │   └── image.rs             # 单张图片下载 + 重试逻辑
+│   │   └── image.rs             # 结构化下载项与单图辅助
 │   ├── config.rs                # 全局配置管理（serde + toml）
 │   ├── error.rs                 # 统一错误类型
+│   ├── output.rs                # 按模式解析输出路径 grammar
+│   ├── failure.rs               # 失败记录 / manifest / replay 元数据
+│   ├── replay.rs                # manifest 回放执行器
+│   ├── test_support.rs          # 测试期环境隔离工具
+│   ├── net/
+│   │   └── mod.rs               # 统一请求运行时、退避、cooldown、Retry-After
 │   └── utils/
 │       ├── mod.rs
 │       ├── progress.rs          # 进度条封装
@@ -182,7 +188,7 @@ picals-crawler/
   - ID 排序
   - 下载汇总
 
-这样可以复用主链路能力，同时避免为 Phase 2 引入额外抽象层。
+这样可以复用主链路能力，同时避免为当前 CLI 主链路引入过度抽象层。
 
 ### 3.3 认证模块
 
@@ -217,7 +223,7 @@ pub struct Config {
 
 #[derive(Deserialize, Serialize)]
 pub struct DownloadConfig {
-    pub directory: String,
+    pub roots: DownloadRootsConfig,
     pub count: usize,
     pub sort: SortOrder,
     pub r18: bool,
@@ -229,12 +235,23 @@ pub struct DownloadConfig {
 }
 
 #[derive(Deserialize, Serialize)]
+pub struct DownloadRootsConfig {
+    pub illust: String,
+    pub user: String,
+    pub bookmark: String,
+    pub keyword: String,
+    pub ranking: String,
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct ProxyConfig {
     pub url: String,
 }
 ```
 
 配置加载优先级：CLI 参数 → 环境变量 → config.toml → 默认值。
+
+当前实现保留 `download.directory` 作为历史兼容读键，但新的写入与主输出统一使用 `download.roots.*`。
 
 ### 3.5 错误处理
 
@@ -262,6 +279,9 @@ pub enum CrawlerError {
 
     #[error("下载中断: {0}")]
     DownloadInterrupted(String),
+
+    #[error("HTTP 请求失败: 状态码 {status}，{context}")]
+    HttpStatus { status: u16, context: String },
 }
 
 // 应用层：使用 eyre 简化错误传播
@@ -296,20 +316,23 @@ pub type Result<T> = eyre::Result<T>;
    │  ├→ 解析响应 → 提取所有 illust IDs
    │  └→ 返回 Vec<illust_id>
    │
-   ├─ Phase 2: collect_urls(ids)
+   ├─ Phase 2: collect_download_items(ids)
    │  ├→ for each id: GET /ajax/illust/{id}/pages
    │  ├→ 解析响应 → 提取原始图片 URLs
-   │  └→ 返回 Vec<image_url>
+   │  ├→ OutputLayout 解析 context / illust 目录
+   │  └→ 返回 Vec<DownloadItem { illust_id, image_url, target_dir }>
    │
-   └─ Phase 3: download(urls)
+   └─ Phase 3: download(items)
       ├→ 断点续传：检查本地是否已有文件
       ├→ 并发下载（Semaphore 控制）
       ├→ 每张图：GET → 检查完整性 → 写入磁盘
       ├→ 更新进度条
-      └→ 返回 DownloadResult { total, downloaded, skipped, size }
+      └→ 返回 DownloadResult { total, downloaded, skipped, failed, failure_records }
 
 5. 输出结果
-   ├→ 显示下载汇总
+   ├→ 对 retryable 失败项自动 replay 一次
+   ├→ 若仍失败则写入 manifest
+   ├→ 输出 `picals-crawler retry <manifest-path>`
    └→ 写入 tags.json（若启用）
 ```
 
@@ -326,8 +349,11 @@ download_image(url, target_path)
 │  └─ 设置 cookie (PHPSESSID)
 │
 ├─ 3. 发送 GET 请求
+│  ├─ 统一请求运行时 (PixivRequestRuntime)
 │  ├─ 超时控制 (timeout)
-│  └─ 重试机制 (retry)
+│  ├─ 指数退避 + jitter
+│  ├─ Retry-After 解析
+│  └─ 429 cooldown / fresh-on-retry
 │
 ├─ 4. 完整性校验
 │  ├─ 对比 Content-Length 与实际 body 大小
@@ -367,8 +393,16 @@ download_image(url, target_path)
 - Mock HTTP server（使用 `wiremock`）模拟 Pixiv API 响应
 - 完整的 `UserCrawler::run()` 流程测试
 - 断点续传测试（模拟已下载部分文件）
+- `retry` manifest 回放测试
+- 自动 replay / manifest 落盘测试
+- 请求运行时 `429 / 503 / timeout / 401` 行为测试
 
-### 6.3 测试覆盖率目标
+### 6.3 测试隔离
+
+- 当前实现统一通过 `src/test_support.rs` 管理 `HOME / XDG_CONFIG_HOME / PICALS_PIXIV_BASE_URL / PICALS_DOWNLOAD_*` 等全局环境变量隔离。
+- integration tests 与库内单元测试共用同一套 `lock_env()` 与 `EnvVarGuard`。
+
+### 6.4 测试覆盖率目标
 
 - 核心模块（selector / auth / config）≥ 80%
 - Crawler 模块 ≥ 60%
@@ -432,7 +466,7 @@ jobs:
 ## 八、安全考虑
 
 - **凭据存储**：`~/.config/picals-crawler/credentials` 权限 600（仅 owner 可读写）
-- **日志安全**：当前实现不会在用户可见输出中打印 `PHPSESSID` 明文；凭据展示场景仅暴露普通配置与认证状态
+- **日志安全**：凭据不会自动进入日志；但 setup/config 的明文凭据可见性是显式产品合同，因此通过用户提示与文件权限控制来约束暴露面
 - **HTTPS 强制**：所有 Pixiv API 请求使用 HTTPS
 - **TLS 验证**：默认启用 TLS 证书验证
 - **代理安全**：SOCKS5 代理使用 `reqwest` 内置支持，不依赖外部工具
@@ -543,7 +577,7 @@ tokio-test = "0.4"          # tokio 测试工具
 - [x] tags.json 保存
 - [x] 精致进度条（速度、ETA 统计 seam）
 
-> 现状说明（2026-06-20）：Phase 2 的功能能力已经落地并通过 `cargo fmt --check`、`cargo check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets`。当前实现采用“setup 保存 `userId` 认证元数据”的方案，`download bookmark` 已进入主链路，实现了收藏分页、去重、count 截断、`tags.json` 导出与下载汇总。
+> 现状说明（2026-06-21）：本轮 UX 优化已经完成并通过 `cargo fmt --check`、`cargo check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets`。当前实现新增了 `output.rs / net/mod.rs / failure.rs / replay.rs / test_support.rs`，并将配置模型升级为 `download.roots.*`、请求层升级为统一 runtime、失败补救升级为 manifest + `retry` 回放闭环。
 
 ### Phase 3 — 体验打磨（预计 1-2 周）
 
