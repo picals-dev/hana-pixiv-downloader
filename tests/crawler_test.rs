@@ -5,6 +5,9 @@ use std::{fs, path::PathBuf};
 
 use picals_crawler::{
     auth::Credential,
+    collector::selector::{
+        count_user_illust_ids, select_bookmark_total, select_keyword_total, select_ranking_total,
+    },
     config::{DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder},
     crawler::{
         bookmark::BookmarkCrawler,
@@ -787,4 +790,47 @@ fn missing_credential_error_keeps_chinese_message() {
 fn missing_user_id_error_keeps_chinese_message() {
     let error = CrawlerError::MissingUserId;
     assert!(error.to_string().contains("缺少 userId"));
+}
+
+#[test]
+fn selector_can_count_user_illust_ids() {
+    let value = common::read_fixture("user_profile_all.json");
+    assert_eq!(count_user_illust_ids(&value).unwrap(), 3);
+}
+
+#[test]
+fn selector_can_read_keyword_total() {
+    let value = serde_json::json!({
+        "error": false,
+        "body": {
+            "illustManga": {
+                "total": 476042,
+                "data": [{ "id": "1" }]
+            }
+        }
+    });
+    assert_eq!(select_keyword_total(&value).unwrap(), 476042);
+}
+
+#[test]
+fn selector_can_read_bookmark_total() {
+    let value = serde_json::json!({
+        "error": false,
+        "body": {
+            "total": 3134,
+            "works": [{ "id": "1" }]
+        }
+    });
+    assert_eq!(select_bookmark_total(&value).unwrap(), 3134);
+}
+
+#[test]
+fn selector_can_read_ranking_total() {
+    let value = serde_json::json!({
+        "contents": [{ "illust_id": "1" }],
+        "rank_total": 500,
+        "page": 1,
+        "next": 2
+    });
+    assert_eq!(select_ranking_total(&value).unwrap(), 500);
 }

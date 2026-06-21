@@ -46,6 +46,32 @@ fn ranking_cli_rejects_sort_flag_at_parse_time() {
     assert!(error.to_string().contains("--sort"));
 }
 
+#[test]
+fn ranking_cli_accepts_positional_mode() {
+    let cli = Cli::parse_from(["picals-crawler", "download", "ranking", "daily"]);
+
+    match cli.command {
+        picals_crawler::cli::Command::Download(download) => match download.target {
+            DownloadSubcommand::Ranking(args) => {
+                assert_eq!(
+                    args.mode,
+                    Some(picals_crawler::cli::download::RankingMode::Daily)
+                );
+            }
+            _ => panic!("expected ranking command"),
+        },
+        _ => panic!("expected download command"),
+    }
+}
+
+#[test]
+fn ranking_cli_rejects_legacy_mode_flag() {
+    let error = Cli::try_parse_from(["picals-crawler", "download", "ranking", "--mode", "daily"])
+        .unwrap_err();
+
+    assert!(error.to_string().contains("--mode"));
+}
+
 #[tokio::test]
 async fn ranking_rejects_non_default_values_from_config() {
     let _lock = lock_env().await;
@@ -103,7 +129,9 @@ async fn bookmark_requires_user_id_in_credential() {
 async fn bookmark_dry_run_accepts_credential_with_user_id() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
+    let server = MockServer::start().await;
     let _config_home = set_config_home(temp.path());
+    let _base_url = EnvVarGuard::set("PICALS_PIXIV_BASE_URL", server.uri());
     let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
     let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
     let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
@@ -111,6 +139,18 @@ async fn bookmark_dry_run_accepts_credential_with_user_id() {
         .unwrap()
         .save()
         .unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/ajax/user/12345678/illusts/bookmarks"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "error": false,
+            "body": {
+                "total": 3,
+                "works": [{ "id": "1" }]
+            }
+        })))
+        .mount(&server)
+        .await;
 
     let cli = Cli::parse_from(["picals-crawler", "download", "bookmark", "--dry-run"]);
     commands::dispatch(cli).await.unwrap();

@@ -49,6 +49,16 @@ pub fn select_keyword_illust_ids(value: &Value) -> Result<Vec<String>, CrawlerEr
     Ok(ids)
 }
 
+pub fn select_keyword_total(value: &Value) -> Result<usize, CrawlerError> {
+    let total = value
+        .pointer("/body/illustManga/total")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| CrawlerError::Parse("缺少 body.illustManga.total".to_string()))?;
+
+    usize::try_from(total)
+        .map_err(|_| CrawlerError::Parse(format!("关键词作品总数超出 usize 范围: {total}")))
+}
+
 pub fn select_ranking_illust_ids(value: &Value) -> Result<Vec<String>, CrawlerError> {
     let items = value
         .get("contents")
@@ -70,6 +80,16 @@ pub fn select_ranking_illust_ids(value: &Value) -> Result<Vec<String>, CrawlerEr
     Ok(ids)
 }
 
+pub fn select_ranking_total(value: &Value) -> Result<usize, CrawlerError> {
+    let total = value
+        .get("rank_total")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| CrawlerError::Parse("缺少 rank_total 字段".to_string()))?;
+
+    usize::try_from(total)
+        .map_err(|_| CrawlerError::Parse(format!("排行榜总数超出 usize 范围: {total}")))
+}
+
 pub fn select_bookmark_illust_ids(value: &Value) -> Result<Vec<String>, CrawlerError> {
     let items = value
         .pointer("/body/works")
@@ -89,6 +109,16 @@ pub fn select_bookmark_illust_ids(value: &Value) -> Result<Vec<String>, CrawlerE
     ids.sort();
     ids.dedup();
     Ok(ids)
+}
+
+pub fn select_bookmark_total(value: &Value) -> Result<usize, CrawlerError> {
+    let total = value
+        .pointer("/body/total")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| CrawlerError::Parse("缺少 body.total 字段".to_string()))?;
+
+    usize::try_from(total)
+        .map_err(|_| CrawlerError::Parse(format!("收藏作品总数超出 usize 范围: {total}")))
 }
 
 pub fn select_current_user_id(
@@ -156,6 +186,10 @@ pub fn select_illust_tags(value: &Value) -> Result<Vec<String>, CrawlerError> {
     }
 
     Ok(result)
+}
+
+pub fn count_user_illust_ids(value: &Value) -> Result<usize, CrawlerError> {
+    Ok(select_user_illust_ids(value)?.len())
 }
 
 fn collect_map_keys(value: Option<&Value>, ids: &mut Vec<String>) {

@@ -2,9 +2,12 @@
 
 use crate::{
     cli::download::BookmarkArgs,
+    collector::PixivCollector,
     commands::download_common::{
-        build_replay_command, finalize_download_result, load_required_credential,
-        print_download_summary, resolve_layout, resolve_options,
+        DownloadPresentation, build_replay_command, finalize_download_result,
+        load_required_credential, print_bulk_probe_summary, print_download_config_table,
+        print_download_summary, probe_bookmark_count, render_order_label, resolve_layout,
+        resolve_options, resolve_planned_count,
     },
     config::DownloadMode,
     crawler::bookmark::BookmarkCrawler,
@@ -17,13 +20,25 @@ pub async fn run(args: BookmarkArgs) -> AppResult<()> {
     let user_id = credential.require_user_id()?.to_string();
     let layout = resolve_layout(&options, &user_id)?;
     let target_directory = layout.context_dir().to_path_buf();
+    let collector = PixivCollector::new(&options, &credential)?;
+    let probe = probe_bookmark_count(&collector, &user_id).await?;
+    print_bulk_probe_summary(&probe);
+    let planned_count = resolve_planned_count(&options, probe.candidate_count)?;
+    let mut options = options;
+    options.count = planned_count;
+    print_download_config_table(
+        &DownloadPresentation {
+            mode_label: "收藏下载".to_string(),
+            subject_label: format!("当前账号 {}", user_id),
+            candidate_count: Some(probe.candidate_count),
+            planned_count: Some(planned_count),
+            order_label: render_order_label(DownloadMode::Bookmark, options.sort),
+        },
+        &options,
+        &target_directory,
+    );
 
     if options.dry_run {
-        println!("将下载当前账号的收藏作品（dry-run）");
-        println!("下载目录: {}", target_directory.display());
-        println!("下载数量: {}", options.count);
-        println!("并发下载数: {}", options.concurrent);
-        println!("当前账号 userId: {user_id}");
         return Ok(());
     }
 

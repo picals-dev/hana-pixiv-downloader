@@ -3,8 +3,11 @@
 use crate::{
     auth::Credential,
     cli::download::UserArgs,
+    collector::PixivCollector,
     commands::download_common::{
-        build_replay_command, finalize_download_result, print_download_summary, resolve_layout,
+        DownloadPresentation, build_replay_command, finalize_download_result,
+        print_bulk_probe_summary, print_download_config_table, print_download_summary,
+        probe_user_count, render_order_label, resolve_layout, resolve_planned_count,
     },
     config::{Config, DownloadMode, EnvOverrides, SortOrder},
     crawler::user::UserCrawler,
@@ -22,25 +25,29 @@ pub async fn run(args: UserArgs) -> AppResult<()> {
     let layout = resolve_layout(&options, &artist_id)?;
     let target_directory = layout.context_dir().to_path_buf();
     let credential = Credential::load()?;
+    let credential = credential.ok_or(CrawlerError::MissingCredential)?;
+    let collector = PixivCollector::new(&options, &credential)?;
+    let probe = probe_user_count(&collector, &artist_id).await?;
+    print_bulk_probe_summary(&probe);
+    let planned_count = resolve_planned_count(&options, probe.candidate_count)?;
+    let mut options = options;
+    options.count = planned_count;
+    print_download_config_table(
+        &DownloadPresentation {
+            mode_label: "画师下载".to_string(),
+            subject_label: artist_id.clone(),
+            candidate_count: Some(probe.candidate_count),
+            planned_count: Some(planned_count),
+            order_label: render_order_label(DownloadMode::User, options.sort),
+        },
+        &options,
+        &target_directory,
+    );
 
     if options.dry_run {
-        println!("将下载画师 {} 的作品（dry-run）", artist_id);
-        println!("下载目录: {}", target_directory.display());
-        println!("下载数量: {}", options.count);
-        println!("排序方式: {:?}", options.sort);
-        println!("并发下载数: {}", options.concurrent);
-        println!(
-            "认证状态: {}",
-            if credential.is_some() {
-                "已配置"
-            } else {
-                "未配置"
-            }
-        );
         return Ok(());
     }
 
-    let credential = credential.ok_or(CrawlerError::MissingCredential)?;
     let crawler = UserCrawler::new(artist_id, credential, options)?;
     let result = crawler.run().await?;
     let result = finalize_download_result(

@@ -163,8 +163,8 @@ impl RankingMode {
 
 #[derive(Debug, Clone, Args)]
 pub struct RankingArgs {
-    #[arg(long, default_value = "daily", value_enum, help = "排行榜模式")]
-    pub mode: RankingMode,
+    #[arg(value_name = "OPTION", value_enum, help = "排行榜模式")]
+    pub mode: Option<RankingMode>,
 
     #[arg(long = "to", value_name = "PATH", help = "覆盖下载目录")]
     pub directory: Option<PathBuf>,

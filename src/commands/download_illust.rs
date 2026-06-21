@@ -3,8 +3,9 @@
 use crate::{
     cli::download::IllustArgs,
     commands::download_common::{
-        build_replay_command, finalize_download_result, load_required_credential,
-        print_download_summary, resolve_layout, resolve_options,
+        DownloadPresentation, build_replay_command, finalize_download_result,
+        load_required_credential, print_download_config_table, print_download_summary,
+        render_order_label, resolve_layout, resolve_options,
     },
     config::DownloadMode,
     crawler::illust::IllustCrawler,
@@ -17,13 +18,19 @@ pub async fn run(args: IllustArgs) -> AppResult<()> {
     let options = resolve_options(DownloadMode::Illust, &args.common.to_overrides())?;
     let layout = resolve_layout(&options, &illust_id)?;
     let target_directory = layout.context_dir().to_path_buf();
+    print_download_config_table(
+        &DownloadPresentation {
+            mode_label: "作品下载".to_string(),
+            subject_label: illust_id.clone(),
+            candidate_count: None,
+            planned_count: None,
+            order_label: render_order_label(DownloadMode::Illust, options.sort),
+        },
+        &options,
+        &target_directory,
+    );
 
     if options.dry_run {
-        println!("将下载作品 {} 的全部图片（dry-run）", illust_id);
-        println!("下载目录: {}", target_directory.display());
-        println!("下载数量: {}", options.count);
-        println!("排序方式: {:?}", options.sort);
-        println!("并发下载数: {}", options.concurrent);
         return Ok(());
     }
 

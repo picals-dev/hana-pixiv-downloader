@@ -1,9 +1,20 @@
 //! 下载命令共享辅助。
 
-use std::path::Path;
+use std::{fmt, path::Path};
+
+use comfy_table::{ContentArrangement, Table, presets::UTF8_FULL_CONDENSED};
+use inquire::{InquireError, Select, Text};
 
 use crate::{
     auth::Credential,
+    cli::download::RankingMode,
+    collector::{
+        PixivCollector,
+        selector::{
+            count_user_illust_ids, select_bookmark_total, select_keyword_total,
+            select_ranking_total,
+        },
+    },
     config::{
         Config, DownloadMode, DownloadOverrides, EnvOverrides, ResolvedDownloadOptions, SortOrder,
     },
@@ -16,8 +27,68 @@ use crate::{
 
 pub const RANKING_SORT_ERROR: &str = "download ranking 不支持自定义排序；仅允许默认值 date_desc";
 pub const RANKING_R18_ERROR: &str =
-    "download ranking 不支持通用 R-18 开关；请改用 --mode daily_r18 或 weekly_r18";
+    "download ranking 不支持通用 R-18 开关；请改用 ranking daily_r18 或 ranking weekly_r18";
 pub const RANKING_AI_ERROR: &str = "download ranking 不支持 AI 过滤开关；当前仅允许默认值 ai=true";
+const BULK_WARNING_THRESHOLD: usize = 1000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchProbeSummary {
+    pub candidate_count: usize,
+    pub count_source: &'static str,
+    pub subject_label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DownloadPresentation {
+    pub mode_label: String,
+    pub subject_label: String,
+    pub candidate_count: Option<usize>,
+    pub planned_count: Option<usize>,
+    pub order_label: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RankingModeChoice {
+    Daily,
+    Weekly,
+    Monthly,
+    Male,
+    Female,
+    DailyR18,
+    WeeklyR18,
+}
+
+impl RankingModeChoice {
+    fn options() -> Vec<Self> {
+        vec![
+            Self::Daily,
+            Self::Weekly,
+            Self::Monthly,
+            Self::Male,
+            Self::Female,
+            Self::DailyR18,
+            Self::WeeklyR18,
+        ]
+    }
+
+    fn as_api_mode(self) -> &'static str {
+        match self {
+            Self::Daily => "daily",
+            Self::Weekly => "weekly",
+            Self::Monthly => "monthly",
+            Self::Male => "male",
+            Self::Female => "female",
+            Self::DailyR18 => "daily_r18",
+            Self::WeeklyR18 => "weekly_r18",
+        }
+    }
+}
+
+impl fmt::Display for RankingModeChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_api_mode())
+    }
+}
 
 pub fn resolve_options(
     mode: DownloadMode,
@@ -58,6 +129,196 @@ pub fn ensure_ranking_defaults(options: &ResolvedDownloadOptions) -> AppResult<(
 
 pub fn resolve_layout(options: &ResolvedDownloadOptions, subject: &str) -> AppResult<OutputLayout> {
     resolve_output_layout(options.mode, &options.directory, subject)
+}
+
+pub fn resolve_ranking_mode(mode: Option<RankingMode>) -> AppResult<String> {
+    if let Some(mode) = mode {
+        return Ok(mode.as_api_mode().to_string());
+    }
+
+    let selected = Select::new("请选择要下载的排行榜模式", RankingModeChoice::options())
+        .with_starting_cursor(0)
+        .prompt()
+        .map_err(map_inquire_error)?;
+    Ok(selected.as_api_mode().to_string())
+}
+
+pub async fn probe_user_count(
+    collector: &PixivCollector,
+    user_id: &str,
+) -> AppResult<BatchProbeSummary> {
+    let profile = collector.fetch_user_profile_all(user_id).await?;
+    let count = count_user_illust_ids(&profile)?;
+    Ok(BatchProbeSummary {
+        candidate_count: count,
+        count_source: "profile/all 的 illusts + manga 作品 ID 数量",
+        subject_label: format!("画师 {user_id}"),
+    })
+}
+
+pub async fn probe_keyword_count(
+    collector: &PixivCollector,
+    query: &str,
+    order: &str,
+    mode: &str,
+    include_ai: bool,
+) -> AppResult<BatchProbeSummary> {
+    let value = collector
+        .fetch_keyword_page(query, order, mode, 1, include_ai)
+        .await?;
+    let count = select_keyword_total(&value)?;
+    Ok(BatchProbeSummary {
+        candidate_count: count,
+        count_source: "搜索接口 body.illustManga.total",
+        subject_label: format!("关键词 {query}"),
+    })
+}
+
+pub async fn probe_bookmark_count(
+    collector: &PixivCollector,
+    user_id: &str,
+) -> AppResult<BatchProbeSummary> {
+    let value = collector.fetch_bookmark_page(user_id, 0, 1).await?;
+    let count = select_bookmark_total(&value)?;
+    Ok(BatchProbeSummary {
+        candidate_count: count,
+        count_source: "收藏接口 body.total",
+        subject_label: format!("账号 {user_id} 的收藏"),
+    })
+}
+
+pub async fn probe_ranking_count(
+    collector: &PixivCollector,
+    mode: &str,
+) -> AppResult<BatchProbeSummary> {
+    let value = collector.fetch_ranking_page(mode, 1).await?;
+    let count = select_ranking_total(&value)?;
+    Ok(BatchProbeSummary {
+        candidate_count: count,
+        count_source: "排行榜接口 rank_total",
+        subject_label: format!("排行榜 {mode}"),
+    })
+}
+
+pub fn print_bulk_probe_summary(summary: &BatchProbeSummary) {
+    println!(
+        "已探测到候选作品 {} 个（{}）",
+        summary.candidate_count, summary.subject_label
+    );
+    println!("计数来源: {}", summary.count_source);
+    if summary.candidate_count > BULK_WARNING_THRESHOLD {
+        println!(
+            "⚠️ 警告：本次候选作品数已超过 {}，请谨慎确认下载规模，避免一次性下载过多作品。",
+            BULK_WARNING_THRESHOLD
+        );
+    }
+}
+
+pub fn resolve_planned_count(
+    options: &ResolvedDownloadOptions,
+    candidate_count: usize,
+) -> AppResult<usize> {
+    if candidate_count == 0 {
+        return Ok(0);
+    }
+
+    if options.count > 0 {
+        return Ok(options.count.min(candidate_count));
+    }
+
+    if options.dry_run {
+        return Ok(candidate_count);
+    }
+
+    let value = Text::new("本次下载作品数（直接回车表示全部）")
+        .with_default(&candidate_count.to_string())
+        .with_help_message("请输入 1 到候选作品总数之间的整数")
+        .prompt()
+        .map_err(map_inquire_error)?;
+    let trimmed = value.trim();
+
+    if trimmed.is_empty() {
+        return Ok(candidate_count);
+    }
+
+    let count = trimmed
+        .parse::<usize>()
+        .map_err(|_| CrawlerError::InvalidInput("下载作品数需要是无符号整数".to_string()))?;
+    if count == 0 {
+        return Err(CrawlerError::InvalidInput("下载作品数必须大于 0".to_string()).into());
+    }
+    if count > candidate_count {
+        return Err(CrawlerError::InvalidInput(format!(
+            "下载作品数不能超过候选作品总数 {candidate_count}"
+        ))
+        .into());
+    }
+
+    Ok(count)
+}
+
+pub fn render_order_label(mode: DownloadMode, sort: SortOrder) -> String {
+    match mode {
+        DownloadMode::Ranking => "按 Pixiv 榜单顺序".to_string(),
+        _ => match sort {
+            SortOrder::DateDesc => "按发布时间从新到旧".to_string(),
+            SortOrder::DateAsc => "按发布时间从旧到新".to_string(),
+            SortOrder::PopularDesc => "按热度从高到低".to_string(),
+        },
+    }
+}
+
+pub fn print_download_config_table(
+    presentation: &DownloadPresentation,
+    options: &ResolvedDownloadOptions,
+    target_directory: &Path,
+) {
+    let candidate = presentation
+        .candidate_count
+        .map(|count| count.to_string())
+        .unwrap_or_else(|| "单作品".to_string());
+    let planned = presentation
+        .planned_count
+        .map(|count| count.to_string())
+        .unwrap_or_else(|| "单作品".to_string());
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL_CONDENSED)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec!["项目", "当前值"]);
+
+    table.add_row(vec!["模式", presentation.mode_label.as_str()]);
+    table.add_row(vec!["目标", presentation.subject_label.as_str()]);
+    table.add_row(vec!["下载目录", &target_directory.display().to_string()]);
+    table.add_row(vec!["候选作品数", candidate.as_str()]);
+    table.add_row(vec!["本次下载作品数", planned.as_str()]);
+    table.add_row(vec!["顺序", presentation.order_label.as_str()]);
+    table.add_row(vec!["并发下载数", &options.concurrent.to_string()]);
+    table.add_row(vec!["单次请求超时", &format!("{} 秒", options.timeout)]);
+    table.add_row(vec!["网络重试次数", &options.retry.to_string()]);
+    table.add_row(vec![
+        "导出 tags.json",
+        if options.with_tags {
+            "开启"
+        } else {
+            "关闭"
+        },
+    ]);
+    table.add_row(vec![
+        "代理",
+        options.proxy_url.as_deref().unwrap_or("<未设置>"),
+    ]);
+
+    println!("{table}");
+}
+
+fn map_inquire_error(error: InquireError) -> eyre::Report {
+    match error {
+        InquireError::OperationCanceled | InquireError::OperationInterrupted => {
+            eyre::eyre!("操作已取消")
+        }
+        other => eyre::Report::new(other).wrap_err("交互式输入失败"),
+    }
 }
 
 pub async fn finalize_download_result(
