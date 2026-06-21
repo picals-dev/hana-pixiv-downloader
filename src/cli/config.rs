@@ -18,7 +18,10 @@ pub enum ConfigAction {
 
 #[derive(Debug, Clone, Args)]
 pub struct SetConfigArgs {
-    #[arg(value_name = "KEY", help = "配置键，例如 download.directory")]
+    #[arg(
+        value_name = "KEY",
+        help = "配置键，例如 auth.phpsessid 或 download.roots.user"
+    )]
     pub key: String,
 
     #[arg(value_name = "VALUE", help = "配置值")]

@@ -89,13 +89,21 @@ impl Credential {
         self.user_id().ok_or(CrawlerError::MissingUserId.into())
     }
 
-    pub fn cookie_header(&self) -> String {
-        format!("PHPSESSID={}", self.phpsessid)
+    pub fn set_phpsessid(&mut self, phpsessid: impl Into<String>) -> AppResult<()> {
+        self.phpsessid = normalize_phpsessid(phpsessid.into())?;
+        self.validate()
     }
 
-    pub fn masked(&self) -> String {
-        let prefix: String = self.phpsessid.chars().take(3).collect();
-        format!("{prefix}***")
+    pub fn set_user_id<T>(&mut self, user_id: Option<T>) -> AppResult<()>
+    where
+        T: Into<String>,
+    {
+        self.user_id = normalize_user_id(user_id.map(Into::into))?;
+        self.validate()
+    }
+
+    pub fn cookie_header(&self) -> String {
+        format!("PHPSESSID={}", self.phpsessid)
     }
 
     pub fn parse_user_id(input: &str) -> AppResult<String> {

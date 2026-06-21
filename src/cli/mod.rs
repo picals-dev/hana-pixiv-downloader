@@ -34,6 +34,14 @@ pub enum Command {
     Setup,
     /// 下载 Pixiv 图片
     Download(DownloadCommand),
+    /// 重试失败清单中的可重试项
+    Retry(RetryCommand),
     /// 查看或修改配置
     Config(ConfigCommand),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct RetryCommand {
+    #[arg(value_name = "MANIFEST_PATH", help = "失败清单 manifest 路径")]
+    pub manifest_path: std::path::PathBuf,
 }

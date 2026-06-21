@@ -3,7 +3,10 @@
 use crate::{
     auth::Credential,
     cli::download::UserArgs,
-    config::{Config, EnvOverrides, SortOrder},
+    commands::download_common::{
+        build_replay_command, finalize_download_result, print_download_summary, resolve_layout,
+    },
+    config::{Config, DownloadMode, EnvOverrides, SortOrder},
     crawler::user::UserCrawler,
     error::{AppResult, CrawlerError},
     utils::url::extract_user_id,
@@ -13,9 +16,11 @@ pub async fn run(args: UserArgs) -> AppResult<()> {
     let artist_id = extract_user_id(&args.target)?;
     let config = Config::load()?;
     let env = EnvOverrides::from_process_env()?;
-    let options = config.resolve_download_options(&env, &args.common.to_overrides())?;
+    let options =
+        config.resolve_download_options(DownloadMode::User, &env, &args.common.to_overrides())?;
     ensure_sort_supported(options.sort)?;
-    let target_directory = options.directory.join(&artist_id);
+    let layout = resolve_layout(&options, &artist_id)?;
+    let target_directory = layout.context_dir().to_path_buf();
     let credential = Credential::load()?;
 
     if options.dry_run {
@@ -38,12 +43,18 @@ pub async fn run(args: UserArgs) -> AppResult<()> {
     let credential = credential.ok_or(CrawlerError::MissingCredential)?;
     let crawler = UserCrawler::new(artist_id, credential, options)?;
     let result = crawler.run().await?;
-
-    println!("下载目录: {}", target_directory.display());
-    println!(
-        "下载完成：总数 {}，成功 {}，跳过 {}，失败 {}",
-        result.total, result.downloaded, result.skipped, result.failed
-    );
+    let result = finalize_download_result(
+        &crawler.context.credential,
+        build_replay_command(
+            DownloadMode::User,
+            &crawler.context.options,
+            &crawler.artist_id,
+            None,
+        ),
+        result,
+    )
+    .await?;
+    print_download_summary(&target_directory, &result);
 
     Ok(())
 }

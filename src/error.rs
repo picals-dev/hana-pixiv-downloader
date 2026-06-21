@@ -47,6 +47,9 @@ pub enum CrawlerError {
     #[error("下载中断: {0}")]
     DownloadInterrupted(String),
 
+    #[error("HTTP 请求失败: 状态码 {status}，{context}")]
+    HttpStatus { status: u16, context: String },
+
     #[error("未找到认证信息，请先运行 picals-crawler setup")]
     MissingCredential,
 

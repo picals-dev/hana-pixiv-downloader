@@ -1,69 +1,17 @@
-use std::sync::LazyLock;
-
 use clap::{CommandFactory, Parser};
 use picals_crawler::{
     auth::Credential,
-    cli::{Cli, download::DownloadSubcommand},
+    cli::{Cli, Command, download::DownloadSubcommand},
     commands,
     config::{Config, DownloadConfig, POPULAR_SORT_MIGRATION_MESSAGE, ProxyConfig, SortOrder},
+    failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
+    test_support::{EnvVarGuard, lock_env, set_config_home},
 };
 use tempfile::tempdir;
-use tokio::sync::{Mutex, MutexGuard};
-
-static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-
-struct ConfigHomeGuard {
-    _home: EnvVarGuard,
-    _xdg: EnvVarGuard,
-}
-
-struct EnvVarGuard {
-    key: &'static str,
-    previous: Option<String>,
-}
-
-impl EnvVarGuard {
-    fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
-        let previous = std::env::var(key).ok();
-        unsafe {
-            std::env::set_var(key, value);
-        }
-        Self { key, previous }
-    }
-
-    fn unset(key: &'static str) -> Self {
-        let previous = std::env::var(key).ok();
-        unsafe {
-            std::env::remove_var(key);
-        }
-        Self { key, previous }
-    }
-}
-
-impl Drop for EnvVarGuard {
-    fn drop(&mut self) {
-        match &self.previous {
-            Some(value) => unsafe {
-                std::env::set_var(self.key, value);
-            },
-            None => unsafe {
-                std::env::remove_var(self.key);
-            },
-        }
-    }
-}
-
-async fn lock_env() -> MutexGuard<'static, ()> {
-    ENV_LOCK.lock().await
-}
-
-fn set_config_home(temp: &tempfile::TempDir) -> ConfigHomeGuard {
-    let xdg = temp.path().join(".config");
-    ConfigHomeGuard {
-        _home: EnvVarGuard::set("HOME", temp.path()),
-        _xdg: EnvVarGuard::set("XDG_CONFIG_HOME", &xdg),
-    }
-}
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{header, method, path},
+};
 
 #[test]
 fn ranking_help_does_not_expose_sort_r18_or_no_ai() {
@@ -102,7 +50,7 @@ fn ranking_cli_rejects_sort_flag_at_parse_time() {
 async fn ranking_rejects_non_default_values_from_config() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
-    let _config_home = set_config_home(&temp);
+    let _config_home = set_config_home(temp.path());
     let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
     let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
     let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
@@ -126,7 +74,7 @@ async fn ranking_rejects_non_default_values_from_config() {
 async fn ranking_rejects_ai_false_from_env() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
-    let _config_home = set_config_home(&temp);
+    let _config_home = set_config_home(temp.path());
     let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
     let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
     let _ai = EnvVarGuard::set("PICALS_DOWNLOAD_AI", "false");
@@ -140,7 +88,7 @@ async fn ranking_rejects_ai_false_from_env() {
 async fn bookmark_requires_user_id_in_credential() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
-    let _config_home = set_config_home(&temp);
+    let _config_home = set_config_home(temp.path());
     let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
     let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
     let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
@@ -155,7 +103,7 @@ async fn bookmark_requires_user_id_in_credential() {
 async fn bookmark_dry_run_accepts_credential_with_user_id() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
-    let _config_home = set_config_home(&temp);
+    let _config_home = set_config_home(temp.path());
     let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
     let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
     let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
@@ -172,7 +120,7 @@ async fn bookmark_dry_run_accepts_credential_with_user_id() {
 async fn env_popular_sort_returns_migration_error() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
-    let _config_home = set_config_home(&temp);
+    let _config_home = set_config_home(temp.path());
     let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
     let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
     let _sort = EnvVarGuard::set("PICALS_DOWNLOAD_SORT", "popular_desc");
@@ -196,4 +144,218 @@ fn keyword_cli_still_uses_query_and_r18_only() {
         },
         _ => panic!("expected download command"),
     }
+}
+
+#[test]
+fn retry_cli_accepts_manifest_path() {
+    let cli = Cli::parse_from(["picals-crawler", "retry", "/tmp/failures/demo.json"]);
+
+    match cli.command {
+        Command::Retry(args) => {
+            assert_eq!(
+                args.manifest_path,
+                std::path::PathBuf::from("/tmp/failures/demo.json")
+            );
+        }
+        _ => panic!("expected retry command"),
+    }
+}
+
+#[tokio::test]
+async fn retry_command_can_read_manifest_file() {
+    let _lock = lock_env().await;
+    let temp = tempdir().unwrap();
+    let _config_home = set_config_home(temp.path());
+    let manifest_path = temp.path().join("demo.json");
+    Credential::new("cookie").unwrap().save().unwrap();
+
+    let manifest = FailureManifest::new(
+        ReplayCommand::Illust {
+            illust_id: "123456".to_string(),
+            options: ReplayOptions {
+                directory: "/tmp/picals/illust".to_string(),
+                count: 1,
+                sort: SortOrder::DateDesc,
+                r18: false,
+                ai: true,
+                concurrent: 2,
+                timeout: 30,
+                retry: 2,
+                with_tags: false,
+                proxy_url: None,
+                dry_run: false,
+            },
+        },
+        vec![FailureRecord {
+            mode: picals_crawler::config::DownloadMode::Illust,
+            stage: FailureStage::Download,
+            illust_id: Some("123456".to_string()),
+            image_url: Some("https://example.com/123456_p0.png".to_string()),
+            target_path: Some("/tmp/picals/illust/123456/123456_p0.png".to_string()),
+            error_kind: "timeout".to_string(),
+            error_message: "timeout".to_string(),
+            retryable: true,
+        }],
+    )
+    .unwrap();
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let cli = Cli::parse_from([
+        "picals-crawler",
+        "retry",
+        manifest_path.to_string_lossy().as_ref(),
+    ]);
+    commands::dispatch(cli).await.unwrap();
+}
+
+#[tokio::test]
+async fn retry_command_can_recover_retryable_download_record() {
+    let _lock = lock_env().await;
+    let temp = tempdir().unwrap();
+    let _config_home = set_config_home(temp.path());
+    let manifest_path = temp.path().join("retryable.json");
+    let server = MockServer::start().await;
+    Credential::new("cookie").unwrap().save().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/img-original/img/2024/01/02/03/04/05/123456_p0.png"))
+        .and(header(
+            "referer",
+            format!("{}/artworks/123456", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ok".to_vec()))
+        .mount(&server)
+        .await;
+
+    let manifest = FailureManifest::new(
+        ReplayCommand::Illust {
+            illust_id: "123456".to_string(),
+            options: ReplayOptions {
+                directory: temp
+                    .path()
+                    .join("illust-root")
+                    .to_string_lossy()
+                    .into_owned(),
+                count: 1,
+                sort: SortOrder::DateDesc,
+                r18: false,
+                ai: true,
+                concurrent: 1,
+                timeout: 30,
+                retry: 2,
+                with_tags: false,
+                proxy_url: None,
+                dry_run: false,
+            },
+        },
+        vec![FailureRecord {
+            mode: picals_crawler::config::DownloadMode::Illust,
+            stage: FailureStage::Download,
+            illust_id: Some("123456".to_string()),
+            image_url: Some(format!(
+                "{}/img-original/img/2024/01/02/03/04/05/123456_p0.png",
+                server.uri()
+            )),
+            target_path: Some(
+                temp.path()
+                    .join("illust-root/123456/123456_p0.png")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            error_kind: "timeout".to_string(),
+            error_message: "timeout".to_string(),
+            retryable: true,
+        }],
+    )
+    .unwrap();
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let _base_url = EnvVarGuard::set("PICALS_PIXIV_BASE_URL", server.uri());
+    let cli = Cli::parse_from([
+        "picals-crawler",
+        "retry",
+        manifest_path.to_string_lossy().as_ref(),
+    ]);
+    commands::dispatch(cli).await.unwrap();
+
+    assert!(
+        temp.path()
+            .join("illust-root/123456/123456_p0.png")
+            .exists()
+    );
+}
+
+#[tokio::test]
+async fn retry_command_skips_non_retryable_record() {
+    let _lock = lock_env().await;
+    let temp = tempdir().unwrap();
+    let _config_home = set_config_home(temp.path());
+    let manifest_path = temp.path().join("non-retryable.json");
+    Credential::new("cookie").unwrap().save().unwrap();
+
+    let manifest = FailureManifest::new(
+        ReplayCommand::Illust {
+            illust_id: "123456".to_string(),
+            options: ReplayOptions {
+                directory: temp
+                    .path()
+                    .join("illust-root")
+                    .to_string_lossy()
+                    .into_owned(),
+                count: 1,
+                sort: SortOrder::DateDesc,
+                r18: false,
+                ai: true,
+                concurrent: 1,
+                timeout: 30,
+                retry: 2,
+                with_tags: false,
+                proxy_url: None,
+                dry_run: false,
+            },
+        },
+        vec![FailureRecord {
+            mode: picals_crawler::config::DownloadMode::Illust,
+            stage: FailureStage::Download,
+            illust_id: Some("123456".to_string()),
+            image_url: Some("https://example.invalid/123456_p0.png".to_string()),
+            target_path: Some(
+                temp.path()
+                    .join("illust-root/123456/123456_p0.png")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            error_kind: "auth".to_string(),
+            error_message: "auth".to_string(),
+            retryable: false,
+        }],
+    )
+    .unwrap();
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let cli = Cli::parse_from([
+        "picals-crawler",
+        "retry",
+        manifest_path.to_string_lossy().as_ref(),
+    ]);
+    commands::dispatch(cli).await.unwrap();
+
+    assert!(
+        !temp
+            .path()
+            .join("illust-root/123456/123456_p0.png")
+            .exists()
+    );
 }

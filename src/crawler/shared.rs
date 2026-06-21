@@ -1,67 +1,97 @@
 //! 多个下载入口共享的抓取辅助。
 
-use std::{collections::BTreeMap, fs, path::Path, time::Duration};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use futures::{StreamExt, stream};
 use log::warn;
 use url::Url;
 
 use crate::{
+    auth::Credential,
     collector::{
         PixivCollector,
         selector::{select_illust_tags, select_page_original_urls},
     },
     config::{ResolvedDownloadOptions, SortOrder},
-    downloader::{DownloadResult, Downloader},
+    downloader::{DownloadResult, Downloader, image::DownloadItem},
     error::{AppResult, CrawlerError},
-    utils::retry::retry_async,
+    failure::{FailureRecord, FailureStage},
+    output::OutputLayout,
 };
 
-pub async fn collect_image_urls_for_illust_ids(
+pub async fn collect_download_items_for_illust_ids(
     collector: &PixivCollector,
     illust_ids: Vec<String>,
+    layout: &OutputLayout,
     options: &ResolvedDownloadOptions,
-) -> (Vec<String>, usize) {
+) -> (Vec<DownloadItem>, Vec<FailureRecord>) {
     let page_results = stream::iter(illust_ids.into_iter().map(|illust_id| {
         let collector = collector.clone();
-        let retry_count = options.retry;
+        let layout = layout.clone();
 
         async move {
-            let response = retry_async(retry_count, Duration::from_millis(200), |_| {
-                let collector = collector.clone();
-                let illust_id = illust_id.clone();
+            let response = collector.fetch_illust_pages(&illust_id).await;
 
-                async move { collector.fetch_illust_pages(&illust_id).await }
-            })
-            .await;
-
-            (illust_id, response)
+            (illust_id, layout, response)
         }
     }))
     .buffer_unordered(options.concurrent.max(1))
     .collect::<Vec<_>>()
     .await;
 
-    let mut urls = Vec::new();
-    let mut failed_units = 0usize;
+    let mut items = Vec::new();
+    let mut failures = Vec::new();
 
-    for (illust_id, response) in page_results {
+    for (illust_id, layout, response) in page_results {
         match response {
             Ok(value) => match select_page_original_urls(&value) {
-                Ok(mut image_urls) => urls.append(&mut image_urls),
+                Ok(image_urls) => match layout.illust_dir(&illust_id) {
+                    Ok(target_dir) => {
+                        items.extend(image_urls.into_iter().map(|image_url| DownloadItem {
+                            illust_id: illust_id.clone(),
+                            image_url,
+                            target_dir: target_dir.clone(),
+                        }));
+                    }
+                    Err(error) => {
+                        warn!("解析作品 {illust_id} 的下载目录失败: {error}");
+                        failures.push(FailureRecord::from_report(
+                            options.mode,
+                            FailureStage::Collect,
+                            Some(illust_id.clone()),
+                            None,
+                            None,
+                            &error,
+                        ));
+                    }
+                },
                 Err(error) => {
-                    failed_units += 1;
                     warn!("解析作品 {illust_id} 的图片 URL 失败: {error}");
+                    failures.push(FailureRecord::from_crawler_error(
+                        options.mode,
+                        FailureStage::Collect,
+                        Some(illust_id.clone()),
+                        None,
+                        None,
+                        &error,
+                    ));
                 }
             },
             Err(error) => {
-                failed_units += 1;
                 warn!("获取作品 {illust_id} 的图片 URL 失败: {error}");
+                failures.push(FailureRecord::from_report(
+                    options.mode,
+                    FailureStage::Collect,
+                    Some(illust_id.clone()),
+                    None,
+                    None,
+                    &error,
+                ));
             }
         }
     }
 
-    (urls, failed_units)
+    (items, failures)
 }
 
 pub async fn export_tags_json(
@@ -69,23 +99,16 @@ pub async fn export_tags_json(
     illust_ids: &[String],
     output_directory: &Path,
     options: &ResolvedDownloadOptions,
-) -> usize {
+) -> Vec<FailureRecord> {
     if !options.with_tags || illust_ids.is_empty() {
-        return 0;
+        return Vec::new();
     }
 
     let tag_results = stream::iter(illust_ids.iter().cloned().map(|illust_id| {
         let collector = collector.clone();
-        let retry_count = options.retry;
 
         async move {
-            let response = retry_async(retry_count, Duration::from_millis(200), |_| {
-                let collector = collector.clone();
-                let illust_id = illust_id.clone();
-
-                async move { collector.fetch_illust_detail(&illust_id).await }
-            })
-            .await;
+            let response = collector.fetch_illust_detail(&illust_id).await;
 
             (illust_id, response)
         }
@@ -95,7 +118,7 @@ pub async fn export_tags_json(
     .await;
 
     let mut tag_map = BTreeMap::<String, Vec<String>>::new();
-    let mut failed = 0usize;
+    let mut failures = Vec::new();
 
     for (illust_id, response) in tag_results {
         match response {
@@ -104,23 +127,49 @@ pub async fn export_tags_json(
                     tag_map.insert(illust_id, tags);
                 }
                 Err(error) => {
-                    failed += 1;
                     warn!("解析作品 {illust_id} 的标签失败: {error}");
+                    failures.push(FailureRecord::from_crawler_error(
+                        options.mode,
+                        FailureStage::Tags,
+                        Some(illust_id.clone()),
+                        None,
+                        None,
+                        &error,
+                    ));
                 }
             },
             Err(error) => {
-                failed += 1;
                 warn!("获取作品 {illust_id} 的标签失败: {error}");
+                failures.push(FailureRecord::from_report(
+                    options.mode,
+                    FailureStage::Tags,
+                    Some(illust_id.clone()),
+                    None,
+                    None,
+                    &error,
+                ));
             }
         }
     }
 
     if let Err(error) = write_tags_json(output_directory, &tag_map) {
-        failed += 1;
         warn!("写入 tags.json 失败: {error}");
+        failures.push(FailureRecord::from_report(
+            options.mode,
+            FailureStage::Tags,
+            None,
+            None,
+            Some(
+                output_directory
+                    .join("tags.json")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            &error,
+        ));
     }
 
-    failed
+    failures
 }
 
 pub fn write_tags_json(
@@ -156,12 +205,13 @@ pub fn sort_illust_ids(illust_ids: &mut [String], sort: SortOrder) -> AppResult<
     Ok(())
 }
 
-pub async fn download_urls(
+pub async fn download_items(
+    credential: &Credential,
     options: ResolvedDownloadOptions,
     output_directory: std::path::PathBuf,
     referer_base_url: Url,
-    urls: &[String],
+    items: &[DownloadItem],
 ) -> AppResult<DownloadResult> {
-    let downloader = Downloader::new(options, output_directory, referer_base_url)?;
-    downloader.download(urls).await
+    let downloader = Downloader::new(options, output_directory, referer_base_url, credential)?;
+    downloader.download(items).await
 }

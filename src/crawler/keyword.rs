@@ -1,18 +1,16 @@
 //! KeywordCrawler。
 
-use std::time::Duration;
-
 use crate::{
     auth::Credential,
     collector::{PixivCollector, resolve_base_url, selector::select_keyword_illust_ids},
-    config::{ResolvedDownloadOptions, SortOrder},
+    config::{DownloadMode, ResolvedDownloadOptions, SortOrder},
     crawler::CrawlContext,
     crawler::shared::{
-        collect_image_urls_for_illust_ids, download_urls, export_tags_json, sort_illust_ids,
+        collect_download_items_for_illust_ids, download_items, export_tags_json, sort_illust_ids,
     },
     downloader::DownloadResult,
     error::AppResult,
-    utils::retry::retry_async,
+    output::resolve_output_layout,
 };
 use url::Url;
 
@@ -35,8 +33,9 @@ impl KeywordCrawler {
         query: String,
         mode: KeywordMode,
         credential: Credential,
-        options: ResolvedDownloadOptions,
+        mut options: ResolvedDownloadOptions,
     ) -> AppResult<Self> {
+        options.mode = DownloadMode::Keyword;
         Ok(Self {
             query,
             mode,
@@ -49,9 +48,10 @@ impl KeywordCrawler {
         query: String,
         mode: KeywordMode,
         credential: Credential,
-        options: ResolvedDownloadOptions,
+        mut options: ResolvedDownloadOptions,
         base_url: Url,
     ) -> Self {
+        options.mode = DownloadMode::Keyword;
         Self {
             query,
             mode,
@@ -80,21 +80,9 @@ impl KeywordCrawler {
 
         let mut illust_ids = Vec::new();
         for page in 1..=page_count {
-            let value = retry_async(
-                self.context.options.retry,
-                Duration::from_millis(200),
-                |_| {
-                    let collector = collector.clone();
-                    let query = self.query.clone();
-
-                    async move {
-                        collector
-                            .fetch_keyword_page(&query, order, mode, page, self.context.options.ai)
-                            .await
-                    }
-                },
-            )
-            .await?;
+            let value = collector
+                .fetch_keyword_page(&self.query, order, mode, page, self.context.options.ai)
+                .await?;
             illust_ids.extend(select_keyword_illust_ids(&value)?);
         }
 
@@ -104,29 +92,38 @@ impl KeywordCrawler {
             illust_ids.truncate(target_count);
         }
 
-        let (urls, mut failed_units) = collect_image_urls_for_illust_ids(
+        let layout = resolve_output_layout(
+            self.context.options.mode,
+            &self.context.options.directory,
+            &self.query,
+        )?;
+        let (items, mut failure_records) = collect_download_items_for_illust_ids(
             &collector,
             illust_ids.clone(),
+            &layout,
             &self.context.options,
         )
         .await;
-        let output_directory = self.context.options.directory.join(&self.query);
-        failed_units += export_tags_json(
-            &collector,
-            &illust_ids,
-            &output_directory,
-            &self.context.options,
-        )
-        .await;
-        let mut result = download_urls(
+        failure_records.extend(
+            export_tags_json(
+                &collector,
+                &illust_ids,
+                layout.context_dir(),
+                &self.context.options,
+            )
+            .await,
+        );
+        let mut result = download_items(
+            &self.context.credential,
             self.context.options.clone(),
-            output_directory,
+            layout.context_dir().to_path_buf(),
             self.base_url.clone(),
-            &urls,
+            &items,
         )
         .await?;
-        result.failed += failed_units;
-        result.total += failed_units;
+        result.failed += failure_records.len();
+        result.total += failure_records.len();
+        result.failure_records.extend(failure_records);
 
         Ok(result)
     }

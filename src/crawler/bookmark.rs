@@ -1,18 +1,16 @@
 //! BookmarkCrawler。
 
-use std::time::Duration;
-
 use crate::{
     auth::Credential,
     collector::{PixivCollector, resolve_base_url, selector::select_bookmark_illust_ids},
-    config::ResolvedDownloadOptions,
+    config::{DownloadMode, ResolvedDownloadOptions},
     crawler::CrawlContext,
     crawler::shared::{
-        collect_image_urls_for_illust_ids, download_urls, export_tags_json, sort_illust_ids,
+        collect_download_items_for_illust_ids, download_items, export_tags_json, sort_illust_ids,
     },
     downloader::DownloadResult,
     error::AppResult,
-    utils::retry::retry_async,
+    output::resolve_output_layout,
 };
 use url::Url;
 
@@ -29,8 +27,9 @@ impl BookmarkCrawler {
     pub fn new(
         user_id: String,
         credential: Credential,
-        options: ResolvedDownloadOptions,
+        mut options: ResolvedDownloadOptions,
     ) -> AppResult<Self> {
+        options.mode = DownloadMode::Bookmark;
         Ok(Self {
             user_id,
             context: CrawlContext::new(credential, options),
@@ -41,9 +40,10 @@ impl BookmarkCrawler {
     pub fn new_with_base_url(
         user_id: String,
         credential: Credential,
-        options: ResolvedDownloadOptions,
+        mut options: ResolvedDownloadOptions,
         base_url: Url,
     ) -> Self {
+        options.mode = DownloadMode::Bookmark;
         Self {
             user_id,
             context: CrawlContext::new(credential, options),
@@ -58,21 +58,9 @@ impl BookmarkCrawler {
         let mut illust_ids = Vec::new();
 
         loop {
-            let value = retry_async(
-                self.context.options.retry,
-                Duration::from_millis(200),
-                |_| {
-                    let collector = collector.clone();
-                    let user_id = self.user_id.clone();
-
-                    async move {
-                        collector
-                            .fetch_bookmark_page(&user_id, offset, BOOKMARK_PAGE_SIZE)
-                            .await
-                    }
-                },
-            )
-            .await?;
+            let value = collector
+                .fetch_bookmark_page(&self.user_id, offset, BOOKMARK_PAGE_SIZE)
+                .await?;
 
             let page_ids = select_bookmark_illust_ids(&value)?;
             let page_len = value
@@ -104,30 +92,39 @@ impl BookmarkCrawler {
             illust_ids.truncate(target_count);
         }
 
-        let (urls, mut failed_units) = collect_image_urls_for_illust_ids(
+        let layout = resolve_output_layout(
+            self.context.options.mode,
+            &self.context.options.directory,
+            &self.user_id,
+        )?;
+        let (items, mut failure_records) = collect_download_items_for_illust_ids(
             &collector,
             illust_ids.clone(),
+            &layout,
             &self.context.options,
         )
         .await;
-        let output_directory = self.context.options.directory.join("bookmark");
-        failed_units += export_tags_json(
-            &collector,
-            &illust_ids,
-            &output_directory,
-            &self.context.options,
-        )
-        .await;
+        failure_records.extend(
+            export_tags_json(
+                &collector,
+                &illust_ids,
+                layout.context_dir(),
+                &self.context.options,
+            )
+            .await,
+        );
 
-        let mut result = download_urls(
+        let mut result = download_items(
+            &self.context.credential,
             self.context.options.clone(),
-            output_directory,
+            layout.context_dir().to_path_buf(),
             self.base_url.clone(),
-            &urls,
+            &items,
         )
         .await?;
-        result.failed += failed_units;
-        result.total += failed_units;
+        result.failed += failure_records.len();
+        result.total += failure_records.len();
+        result.failure_records.extend(failure_records);
 
         Ok(result)
     }

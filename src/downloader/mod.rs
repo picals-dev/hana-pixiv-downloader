@@ -5,34 +5,31 @@ pub mod image;
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::Duration,
 };
 
-use eyre::eyre;
 use futures::{StreamExt, stream};
 use log::warn;
-use reqwest::{
-    Client, Proxy,
-    header::{REFERER, USER_AGENT},
-};
 use url::Url;
 
 use crate::{
-    collector::DEFAULT_USER_AGENT,
+    auth::Credential,
     config::ResolvedDownloadOptions,
     error::{AppResult, CrawlerError},
-    utils::{progress::DownloadProgress, retry::retry_async},
+    failure::{FailureRecord, FailureStage},
+    net::{PixivRequestRuntime, RequestClass},
+    utils::progress::DownloadProgress,
 };
 
-use self::image::{illust_id_from_image_url, target_path_for_image};
+use self::image::{DownloadItem, illust_id_from_image_url};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DownloadResult {
     pub total: usize,
     pub downloaded: usize,
     pub skipped: usize,
     pub failed: usize,
     pub total_bytes: u64,
+    pub failure_records: Vec<FailureRecord>,
 }
 
 #[derive(Debug, Clone)]
@@ -40,7 +37,7 @@ pub struct Downloader {
     pub options: ResolvedDownloadOptions,
     pub directory: PathBuf,
     referer_base_url: Url,
-    client: Client,
+    runtime: PixivRequestRuntime,
 }
 
 impl Downloader {
@@ -48,42 +45,32 @@ impl Downloader {
         options: ResolvedDownloadOptions,
         directory: PathBuf,
         referer_base_url: Url,
+        credential: &Credential,
     ) -> AppResult<Self> {
-        let mut builder = Client::builder()
-            .timeout(Duration::from_secs(options.timeout))
-            .user_agent(DEFAULT_USER_AGENT);
-
-        if let Some(proxy_url) = options.proxy_url.as_deref() {
-            builder = builder.proxy(
-                Proxy::all(proxy_url)
-                    .map_err(|error| CrawlerError::Config(format!("代理配置无效: {error}")))?,
-            );
-        }
-
         Ok(Self {
             directory,
-            client: builder.build()?,
+            runtime: PixivRequestRuntime::new(&options, credential)?,
             options,
             referer_base_url,
         })
     }
 
-    pub async fn download(&self, urls: &[String]) -> AppResult<DownloadResult> {
-        if urls.is_empty() {
+    pub async fn download(&self, items: &[DownloadItem]) -> AppResult<DownloadResult> {
+        if items.is_empty() {
             return Ok(DownloadResult::default());
         }
 
         fs::create_dir_all(&self.directory)?;
 
-        let progress = DownloadProgress::new(urls.len() as u64);
+        let progress = DownloadProgress::new(items.len() as u64);
         progress.set_message(format!("下载目录 {}", self.directory.display()));
 
-        let outcomes = stream::iter(urls.iter().cloned().map(|url| {
+        let outcomes = stream::iter(items.iter().cloned().map(|item| {
             let downloader = self.clone();
             let progress = progress.clone();
 
             async move {
-                let outcome = downloader.download_one(&url).await;
+                let outcome = downloader.download_one(item).await;
                 progress.inc(1);
                 if let DownloadOutcome::Downloaded(bytes) = outcome {
                     progress.record_downloaded_bytes(bytes);
@@ -107,19 +94,30 @@ impl Downloader {
                     result.total_bytes += bytes;
                 }
                 DownloadOutcome::Skipped => result.skipped += 1,
-                DownloadOutcome::Failed => result.failed += 1,
+                DownloadOutcome::Failed(record) => {
+                    result.failed += 1;
+                    result.failure_records.push(record);
+                }
             }
         }
 
         Ok(result)
     }
 
-    async fn download_one(&self, url: &str) -> DownloadOutcome {
-        let target_path = match target_path_for_image(&self.directory, url) {
+    async fn download_one(&self, item: DownloadItem) -> DownloadOutcome {
+        let target_path = match item.target_path() {
             Ok(path) => path,
             Err(error) => {
-                warn!("解析下载路径失败 {url}: {error}");
-                return DownloadOutcome::Failed;
+                warn!("解析下载路径失败 {}: {error}", item.image_url);
+                let report = eyre::Report::new(error);
+                return DownloadOutcome::Failed(FailureRecord::from_report(
+                    self.options.mode,
+                    FailureStage::Download,
+                    Some(item.illust_id.clone()),
+                    Some(item.image_url.clone()),
+                    None,
+                    &report,
+                ));
             }
         };
 
@@ -127,63 +125,44 @@ impl Downloader {
             return DownloadOutcome::Skipped;
         }
 
-        let referer = match build_referer(&self.referer_base_url, url) {
+        let referer = match build_referer(&self.referer_base_url, &item.image_url) {
             Ok(referer) => referer,
             Err(error) => {
-                warn!("构造 Referer 失败 {url}: {error}");
-                return DownloadOutcome::Failed;
+                warn!("构造 Referer 失败 {}: {error}", item.image_url);
+                let report = eyre::Report::new(error);
+                return DownloadOutcome::Failed(FailureRecord::from_report(
+                    self.options.mode,
+                    FailureStage::Download,
+                    Some(item.illust_id.clone()),
+                    Some(item.image_url.clone()),
+                    Some(target_path.to_string_lossy().into_owned()),
+                    &report,
+                ));
             }
         };
 
         let temp_path = temporary_download_path(&target_path);
         let _ = fs::remove_file(&temp_path);
-        let url = url.to_string();
-        let client = self.client.clone();
-        let retry_count = self.options.retry;
+        let url = item.image_url;
+        let download_result = async {
+            let response = self
+                .runtime
+                .get_bytes(
+                    Url::parse(&url)?,
+                    Some(referer),
+                    RequestClass::ImageDownload,
+                )
+                .await?;
 
-        let download_result = retry_async(retry_count, Duration::from_millis(200), |_| {
-            let client = client.clone();
-            let referer = referer.clone();
-            let temp_path = temp_path.clone();
-            let target_path = target_path.clone();
-            let url = url.clone();
-
-            async move {
-                let response = client
-                    .get(&url)
-                    .header(REFERER, referer)
-                    .header(USER_AGENT, DEFAULT_USER_AGENT)
-                    .send()
-                    .await?
-                    .error_for_status()?;
-
-                let expected_length = response.content_length();
-                let bytes = response.bytes().await?;
-
-                if bytes.is_empty() {
-                    return Err(eyre!(CrawlerError::DownloadInterrupted(format!(
-                        "下载到空文件: {url}"
-                    ))));
-                }
-
-                if let Some(expected_length) = expected_length
-                    && bytes.len() as u64 != expected_length
-                {
-                    return Err(eyre!(CrawlerError::DownloadInterrupted(format!(
-                        "下载内容长度不匹配: {url}"
-                    ))));
-                }
-
-                if let Some(parent) = target_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-
-                fs::write(&temp_path, &bytes)?;
-                fs::rename(&temp_path, &target_path)?;
-
-                Ok::<u64, eyre::Report>(bytes.len() as u64)
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)?;
             }
-        })
+
+            fs::write(&temp_path, &response.bytes)?;
+            fs::rename(&temp_path, &target_path)?;
+
+            Ok::<u64, eyre::Report>(response.bytes.len() as u64)
+        }
         .await;
 
         match download_result {
@@ -191,17 +170,24 @@ impl Downloader {
             Err(error) => {
                 let _ = fs::remove_file(&temp_path);
                 warn!("下载失败 {url}: {error}");
-                DownloadOutcome::Failed
+                DownloadOutcome::Failed(FailureRecord::from_report(
+                    self.options.mode,
+                    FailureStage::Download,
+                    Some(item.illust_id),
+                    Some(url),
+                    Some(target_path.to_string_lossy().into_owned()),
+                    &error,
+                ))
             }
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum DownloadOutcome {
     Downloaded(u64),
     Skipped,
-    Failed,
+    Failed(FailureRecord),
 }
 
 fn build_referer(referer_base_url: &Url, url: &str) -> Result<String, CrawlerError> {

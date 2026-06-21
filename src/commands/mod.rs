@@ -7,6 +7,7 @@ mod download_illust;
 mod download_keyword;
 mod download_ranking;
 mod download_user;
+mod retry_cmd;
 mod setup;
 
 use crate::{
@@ -24,6 +25,7 @@ pub async fn dispatch(cli: Cli) -> AppResult<()> {
             DownloadSubcommand::Illust(args) => download_illust::run(args).await,
             DownloadSubcommand::Bookmark(args) => download_bookmark::run(args).await,
         },
+        Command::Retry(args) => retry_cmd::run(args).await,
         Command::Config(config) => match config.action {
             ConfigAction::Show => config_cmd::show().await,
             ConfigAction::Set(args) => config_cmd::set(args).await,

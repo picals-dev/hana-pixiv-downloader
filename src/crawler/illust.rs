@@ -1,16 +1,15 @@
 //! IllustCrawler。
 
-use std::time::Duration;
-
 use crate::{
     auth::Credential,
     collector::{PixivCollector, resolve_base_url, selector::select_page_original_urls},
-    config::ResolvedDownloadOptions,
+    config::{DownloadMode, ResolvedDownloadOptions},
     crawler::CrawlContext,
-    crawler::shared::{download_urls, export_tags_json},
+    crawler::shared::{download_items, export_tags_json},
     downloader::DownloadResult,
+    downloader::image::DownloadItem,
     error::AppResult,
-    utils::retry::retry_async,
+    output::resolve_output_layout,
 };
 use url::Url;
 
@@ -25,8 +24,9 @@ impl IllustCrawler {
     pub fn new(
         illust_id: String,
         credential: Credential,
-        options: ResolvedDownloadOptions,
+        mut options: ResolvedDownloadOptions,
     ) -> AppResult<Self> {
+        options.mode = DownloadMode::Illust;
         Ok(Self {
             illust_id,
             context: CrawlContext::new(credential, options),
@@ -37,9 +37,10 @@ impl IllustCrawler {
     pub fn new_with_base_url(
         illust_id: String,
         credential: Credential,
-        options: ResolvedDownloadOptions,
+        mut options: ResolvedDownloadOptions,
         base_url: Url,
     ) -> Self {
+        options.mode = DownloadMode::Illust;
         Self {
             illust_id,
             context: CrawlContext::new(credential, options),
@@ -49,37 +50,42 @@ impl IllustCrawler {
 
     pub async fn run(&self) -> AppResult<DownloadResult> {
         let collector = self.build_collector()?;
-        let pages = retry_async(
-            self.context.options.retry,
-            Duration::from_millis(200),
-            |_| {
-                let collector = collector.clone();
-                let illust_id = self.illust_id.clone();
-
-                async move { collector.fetch_illust_pages(&illust_id).await }
-            },
-        )
-        .await?;
+        let pages = collector.fetch_illust_pages(&self.illust_id).await?;
 
         let urls = select_page_original_urls(&pages)?;
-        let output_directory = self.context.options.directory.join(&self.illust_id);
-        let mut result = download_urls(
+        let layout = resolve_output_layout(
+            self.context.options.mode,
+            &self.context.options.directory,
+            &self.illust_id,
+        )?;
+        let target_dir = layout.context_dir().to_path_buf();
+        let items = urls
+            .into_iter()
+            .map(|image_url| DownloadItem {
+                illust_id: self.illust_id.clone(),
+                image_url,
+                target_dir: target_dir.clone(),
+            })
+            .collect::<Vec<_>>();
+        let mut result = download_items(
+            &self.context.credential,
             self.context.options.clone(),
-            output_directory.clone(),
+            target_dir.clone(),
             self.base_url.clone(),
-            &urls,
+            &items,
         )
         .await?;
 
-        let failed_units = export_tags_json(
+        let failure_records = export_tags_json(
             &collector,
             std::slice::from_ref(&self.illust_id),
-            &output_directory,
+            &target_dir,
             &self.context.options,
         )
         .await;
-        result.failed += failed_units;
-        result.total += failed_units;
+        result.failed += failure_records.len();
+        result.total += failure_records.len();
+        result.failure_records.extend(failure_records);
 
         Ok(result)
     }

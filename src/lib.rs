@@ -11,6 +11,11 @@ pub mod config;
 pub mod crawler;
 pub mod downloader;
 pub mod error;
+pub mod failure;
+pub mod net;
+pub mod output;
+pub mod replay;
+pub mod test_support;
 pub mod utils;
 
 pub const APP_NAME: &str = "picals-crawler";

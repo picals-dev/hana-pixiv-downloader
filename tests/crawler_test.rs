@@ -5,7 +5,7 @@ use std::{fs, path::PathBuf};
 
 use picals_crawler::{
     auth::Credential,
-    config::{DownloadConfig, ResolvedDownloadOptions, SortOrder},
+    config::{DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder},
     crawler::{
         bookmark::BookmarkCrawler,
         illust::IllustCrawler,
@@ -29,6 +29,7 @@ fn _keep_text_fixture_helper_linked() {
 fn options(directory: PathBuf) -> ResolvedDownloadOptions {
     let defaults = DownloadConfig::default();
     ResolvedDownloadOptions {
+        mode: DownloadMode::Illust,
         directory,
         count: defaults.count,
         sort: SortOrder::DateDesc,
@@ -153,8 +154,8 @@ async fn user_crawler_can_download_images_with_mock_server() {
     assert_eq!(result.downloaded, 2);
     assert_eq!(result.skipped, 0);
     assert_eq!(result.failed, 0);
-    assert!(temp.path().join("12345678/123456_p0.png").exists());
-    assert!(temp.path().join("12345678/123456_p1.png").exists());
+    assert!(temp.path().join("12345678/123456/123456_p0.png").exists());
+    assert!(temp.path().join("12345678/123456/123456_p1.png").exists());
 }
 
 #[tokio::test]
@@ -287,7 +288,7 @@ async fn user_crawler_skips_existing_file() {
     let server = MockServer::start().await;
     let temp = tempdir().unwrap();
     let base_url = server.uri().parse().unwrap();
-    let output_dir = temp.path().join("12345678");
+    let output_dir = temp.path().join("12345678/123456");
     fs::create_dir_all(&output_dir).unwrap();
     fs::write(output_dir.join("123456_p0.png"), b"existing").unwrap();
 
@@ -537,8 +538,16 @@ async fn bookmark_crawler_can_download_bookmarks() {
 
     let result = crawler.run().await.unwrap();
     assert_eq!(result.downloaded, 2);
-    assert!(temp.path().join("bookmark/146185119_p0.png").exists());
-    assert!(temp.path().join("bookmark/146185709_p0.png").exists());
+    assert!(
+        temp.path()
+            .join("12345678/146185119/146185119_p0.png")
+            .exists()
+    );
+    assert!(
+        temp.path()
+            .join("12345678/146185709/146185709_p0.png")
+            .exists()
+    );
 }
 
 #[tokio::test]
@@ -588,8 +597,17 @@ async fn bookmark_crawler_truncates_to_requested_count() {
     let result = crawler.run().await.unwrap();
     assert_eq!(result.total, 1);
     assert_eq!(result.downloaded, 1);
-    assert!(temp.path().join("bookmark/146185709_p0.png").exists());
-    assert!(!temp.path().join("bookmark/146185119_p0.png").exists());
+    assert!(
+        temp.path()
+            .join("12345678/146185709/146185709_p0.png")
+            .exists()
+    );
+    assert!(
+        !temp
+            .path()
+            .join("12345678/146185119/146185119_p0.png")
+            .exists()
+    );
 }
 
 #[tokio::test]
@@ -649,7 +667,7 @@ async fn bookmark_crawler_exports_tags_json_when_enabled() {
     let result = crawler.run().await.unwrap();
     assert_eq!(result.downloaded, 2);
 
-    let tags_path = temp.path().join("bookmark/tags.json");
+    let tags_path = temp.path().join("12345678/tags.json");
     assert!(tags_path.exists());
     let tags: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(tags_path).unwrap()).unwrap();
