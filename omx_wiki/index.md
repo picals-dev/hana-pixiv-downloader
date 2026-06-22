@@ -1,6 +1,6 @@
 # Wiki Index
 
-> 5 pages | Last updated: 2026-06-21T16:10:00.000Z
+> 6 pages | Last updated: 2026-06-22T15:47:42.000Z
 
 ## architecture
 
@@ -18,4 +18,5 @@
 
 ## session-log
 
+- [Picals Crawler net 层 SSOT 实现记录 2026-06-22](picals-crawler-net-层-ssot-实现记录-2026-06-22.md) — # Picals Crawler net 层 SSOT 实现记录 2026-06-22
 - [Picals Crawler UX 优化执行记录 2026-06-21](picals-crawler-ux-优化执行记录-2026-06-21.md) — # Picals Crawler UX 优化执行记录 2026-06-21

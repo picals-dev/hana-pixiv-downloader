@@ -2,7 +2,7 @@
 title: "Picals Crawler 技术设计文档"
 tags: ["technical", "design", "architecture", "rust", "cli"]
 created: 2026-06-16T00:00:00.000Z
-updated: 2026-06-21T07:20:39.000Z
+updated: 2026-06-22T15:47:42.000Z
 sources: ["_notes/nea/technical-design.md"]
 links: ["picals-crawler-产品设计文档.md", "picals-crawler-项目理解基线.md", "typescript-原项目实现观察.md"]
 category: architecture
@@ -12,9 +12,9 @@ schemaVersion: 1
 
 # Picals-Crawler 技术设计文档
 
-> 版本：v0.3.0-draft
-> 最后更新：2026-06-21
-> 状态：UX 优化主链已落地并通过验证
+> 版本：v0.4.0-draft
+> 最后更新：2026-06-22
+> 状态：net 层 SSOT、Pixiv 领域模块与失败回放闭环均已落地并通过验证
 
 ---
 
@@ -93,11 +93,13 @@ picals-crawler/
 │   ├── commands/
 │   │   ├── mod.rs
 │   │   ├── setup.rs             # picals-crawler setup
+│   │   ├── download_direct.rs   # download <pixiv-url> 路由
 │   │   ├── download_user.rs     # download user 逻辑
 │   │   ├── download_keyword.rs  # download keyword 逻辑
 │   │   ├── download_ranking.rs  # download ranking 逻辑
 │   │   ├── download_illust.rs   # download illust 逻辑
 │   │   ├── download_bookmark.rs # download bookmark 逻辑
+│   │   ├── retry_cmd.rs         # retry manifest 回放命令
 │   │   └── config_cmd.rs        # config show/set 逻辑
 │   ├── auth/
 │   │   ├── mod.rs
@@ -109,12 +111,13 @@ picals-crawler/
 │   │   ├── ranking.rs           # RankingCrawler
 │   │   ├── illust.rs            # IllustCrawler
 │   │   └── bookmark.rs          # BookmarkCrawler
-│   ├── collector/
-│   │   ├── mod.rs               # 收集器：统一收集 artwork IDs
-│   │   └── selector.rs          # API 响应解析函数
 │   ├── downloader/
 │   │   ├── mod.rs               # 下载管理器
 │   │   └── image.rs             # 结构化下载项与单图辅助
+│   ├── pixiv/
+│   │   ├── mod.rs               # Pixiv 领域模块汇总
+│   │   ├── selector.rs          # Pixiv Ajax / HTML 响应解析
+│   │   └── url.rs               # Pixiv URL 语义解析
 │   ├── config.rs                # 全局配置管理（serde + toml）
 │   ├── error.rs                 # 统一错误类型
 │   ├── output.rs                # 按模式解析输出路径 grammar
@@ -122,12 +125,18 @@ picals-crawler/
 │   ├── replay.rs                # manifest 回放执行器
 │   ├── test_support.rs          # 测试期环境隔离工具
 │   ├── net/
-│   │   └── mod.rs               # 统一请求运行时、退避、cooldown、Retry-After
+│   │   ├── mod.rs               # net façade 与受控 re-export
+│   │   ├── catalog.rs           # Pixiv 请求目录 / URL / Referer / host 分类
+│   │   ├── client.rs            # metadata/image reqwest client 分离
+│   │   ├── event.rs             # 请求与传输事件
+│   │   ├── policy.rs            # retry / cooldown / backoff 策略
+│   │   ├── session.rs           # PixivNetSession 主执行器
+│   │   ├── state.rs             # host 级共享 cooldown 状态
+│   │   └── transfer.rs          # 图片流式写 .part 与 rename
 │   └── utils/
 │       ├── mod.rs
 │       ├── progress.rs          # 进度条封装
-│       ├── retry.rs             # 重试逻辑
-│       └── url.rs               # URL 解析工具
+│       └── retry.rs             # 通用非网络重试辅助
 ├── tests/
 │   ├── integration/
 │   │   ├── common.rs            # 测试辅助函数
@@ -164,16 +173,20 @@ picals-crawler/
     │          └──────────┴──────────┴──────────┴──────────┘
     │                         │
     ▼                         ▼
-  auth::                  crawler::
-  credential              CrawlContext
-                              │
-                    ┌─────────┼─────────┐
-                    ▼         ▼         ▼
-               collector  downloader  progress
+  auth::                 commands::
+  credential             create_shared_session
                               │
                               ▼
-                          downloader::
-                          image (单图下载)
+                        net::PixivNetSession
+                              │
+               ┌──────────────┼──────────────┐
+               ▼              ▼              ▼
+          pixiv::url    pixiv::selector   crawler::
+                                            shared
+                                               │
+                                               ▼
+                                          downloader::
+                                          image / progress
 ```
 
 ### 3.2 Crawler 组织方式
@@ -309,31 +322,38 @@ pub type Result<T> = eyre::Result<T>;
    ├→ 读取 ~/.config/picals-crawler/credentials
    └→ 若不存在 → 提示运行 picals-crawler setup
 
-4. UserCrawler::run()
+4. 命令层创建共享网络会话
+   └→ `Arc<PixivNetSession>`，在 probe / crawl / download / auto-replay 全链路复用同一实例
+
+5. UserCrawler::run()
    │
    ├─ Phase 1: collect()
-   │  ├→ GET /ajax/user/12345678/profile/all
-   │  ├→ 解析响应 → 提取所有 illust IDs
+   │  ├→ `session.fetch_user_profile_all(user_id)`
+   │  ├→ `pixiv::selector::select_user_illust_ids(...)`
    │  └→ 返回 Vec<illust_id>
    │
    ├─ Phase 2: collect_download_items(ids)
-   │  ├→ for each id: GET /ajax/illust/{id}/pages
-   │  ├→ 解析响应 → 提取原始图片 URLs
+   │  ├→ for each id: `session.fetch_illust_pages(id)`
+   │  ├→ `pixiv::selector::select_page_original_urls(...)`
    │  ├→ OutputLayout 解析 context / illust 目录
    │  └→ 返回 Vec<DownloadItem { illust_id, image_url, target_dir }>
    │
    └─ Phase 3: download(items)
       ├→ 断点续传：检查本地是否已有文件
       ├→ 并发下载（Semaphore 控制）
-      ├→ 每张图：GET → 检查完整性 → 写入磁盘
+      ├→ 每张图：`session.download_original_image(...)`
+      ├→ 流式写入 `.part` → 校验 → rename 成目标文件
       ├→ 更新进度条
       └→ 返回 DownloadResult { total, downloaded, skipped, failed, failure_records }
 
-5. 输出结果
-   ├→ 对 retryable 失败项自动 replay 一次
+6. 输出结果
+   ├→ 对 retryable 失败项自动 replay 一次，并复用同一 `Arc<PixivNetSession>`
    ├→ 若仍失败则写入 manifest
    ├→ 输出 `picals-crawler retry <manifest-path>`
    └→ 写入 tags.json（若启用）
+
+7. 独立 retry
+   └→ `picals-crawler retry <manifest-path>` 会走同一 net stack 创建新 `PixivNetSession`，但不复用旧实例
 ```
 
 ### 4.2 图片下载流程
@@ -346,21 +366,22 @@ download_image(url, target_path)
 ├─ 2. 构建请求
 │  ├─ 设置 Referer header
 │  ├─ 设置 User-Agent
-│  └─ 设置 cookie (PHPSESSID)
+│  └─ image client 默认不携带登录 cookie
 │
 ├─ 3. 发送 GET 请求
-│  ├─ 统一请求运行时 (PixivRequestRuntime)
-│  ├─ 超时控制 (timeout)
+│  ├─ 通过 `PixivNetSession::execute()` 进入统一请求主链路
+│  ├─ metadata / image client 分治
+│  ├─ host 级 cooldown
 │  ├─ 指数退避 + jitter
-│  ├─ Retry-After 解析
-│  └─ 429 cooldown / fresh-on-retry
+│  └─ Retry-After / 429 收敛
 │
 ├─ 4. 完整性校验
-│  ├─ 对比 Content-Length 与实际 body 大小
-│  └─ 不一致 → 重试
+│  ├─ 流式消费 body
+│  ├─ 对比 Content-Length 与实际写入大小
+│  └─ 失败时删除 `.part`
 │
 └─ 5. 写入磁盘
-   └─ 返回文件大小 (MB)
+   └─ `.part` 成功后原子 rename，返回写入字节数
 ```
 
 ---
@@ -556,7 +577,7 @@ tokio-test = "0.4"          # tokio 测试工具
 - [x] `auth/` 模块：凭据读写
 - [x] `config.rs`：配置加载
 - [x] `crawler/user.rs`：UserCrawler 实现
-- [x] `collector/`：API 调用 + 响应解析
+- [x] `pixiv/`：Pixiv URL 语义与响应解析
 - [x] `downloader/`：图片下载 + 重试 + 完整性校验
 - [x] `utils/progress.rs`：基础进度条
 - [x] `commands/setup.rs`：交互式认证引导
@@ -577,7 +598,7 @@ tokio-test = "0.4"          # tokio 测试工具
 - [x] tags.json 保存
 - [x] 精致进度条（速度、ETA 统计 seam）
 
-> 现状说明（2026-06-21）：本轮 UX 优化已经完成并通过 `cargo fmt --check`、`cargo check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets`。当前实现新增了 `output.rs / net/mod.rs / failure.rs / replay.rs / test_support.rs`，并将配置模型升级为 `download.roots.*`、请求层升级为统一 runtime、失败补救升级为 manifest + `retry` 回放闭环。
+> 现状说明（2026-06-22）：当前实现已继续演进为 `src/net/{catalog,client,event,policy,session,state,transfer}.rs` + `src/pixiv/{selector,url}.rs` 结构。命令层一次下载只创建一个共享 `Arc<PixivNetSession>`，`probe -> crawl -> download -> auto-replay` 复用同一实例；独立 `retry` 复用同一 net stack 但新建实例。旧 `collector` 概念已删除，图片下载已改为流式 `.part` 写盘，并通过 `cargo fmt --check`、`cargo check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets` 验证。
 
 ### Phase 3 — 体验打磨（预计 1-2 周）
 

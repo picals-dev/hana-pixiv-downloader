@@ -2,14 +2,13 @@
 title: "Picals Crawler 下载预览与 Ranking 调研报告 2026-06-21"
 tags: ["research", "ux", "pixiv", "ranking", "keyword", "bookmark", "user"]
 created: 2026-06-21T16:10:00.000Z
-updated: 2026-06-21T16:10:00.000Z
+updated: 2026-06-22T15:47:42.000Z
 sources: [
   "src/crawler/user.rs",
   "src/crawler/bookmark.rs",
   "src/crawler/keyword.rs",
   "src/crawler/ranking.rs",
-  "src/collector/mod.rs",
-  "src/collector/selector.rs",
+  "src/pixiv/selector.rs",
   "https://www.pixiv.net/ajax/search/artworks/%E5%8E%9F%E7%A5%9E?word=%E5%8E%9F%E7%A5%9E&order=date_d&mode=safe&p=1&s_mode=s_tag&type=all&lang=zh",
   "https://www.pixiv.net/ajax/user/11/profile/all?lang=zh",
   "https://www.pixiv.net/ranking.php?format=json&mode=daily&p=1",
@@ -62,9 +61,8 @@ schemaVersion: 1
 
 当前 `user` 模式先请求 `/ajax/user/{user_id}/profile/all`，再从 `body.illusts` 与 `body.manga` 的 key 中提取作品 ID：
 
-- [src/crawler/user.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/crawler/user.rs:53)
-- [src/collector/mod.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/collector/mod.rs:52)
-- [src/collector/selector.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/collector/selector.rs:18)
+- [src/crawler/user.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/crawler/user.rs:50)
+- [src/pixiv/selector.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/pixiv/selector.rs:18)
 
 这意味着当前主链路本身已经具备“拿到全量作品 ID 再下载”的结构，预览计数不需要新增接口。
 
@@ -76,9 +74,8 @@ schemaVersion: 1
 
 然后从 `body.works` 提取作品 ID：
 
-- [src/crawler/bookmark.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/crawler/bookmark.rs:54)
-- [src/collector/mod.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/collector/mod.rs:106)
-- [src/collector/selector.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/collector/selector.rs:73)
+- [src/crawler/bookmark.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/crawler/bookmark.rs:57)
+- [src/pixiv/selector.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/pixiv/selector.rs:93)
 
 现状没有读 `body.total`，而是靠“翻页直到不足一页”收集。
 
@@ -90,9 +87,8 @@ schemaVersion: 1
 
 并从 `body.illustManga.data` 取第一页或指定页数的作品 ID：
 
-- [src/crawler/keyword.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/crawler/keyword.rs:63)
-- [src/collector/mod.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/collector/mod.rs:73)
-- [src/collector/selector.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/collector/selector.rs:33)
+- [src/crawler/keyword.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/crawler/keyword.rs:79)
+- [src/pixiv/selector.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/pixiv/selector.rs:33)
 
 值得注意的是：当前实现里 `count = 0` 时只抓 1 页，不是“抓全部”：
 
@@ -106,9 +102,8 @@ schemaVersion: 1
 
 并从 `contents` 提取作品 ID：
 
-- [src/crawler/ranking.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/crawler/ranking.rs:52)
-- [src/collector/mod.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/collector/mod.rs:99)
-- [src/collector/selector.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/collector/selector.rs:52)
+- [src/crawler/ranking.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/crawler/ranking.rs:59)
+- [src/pixiv/selector.rs](/Users/nonhana/code_life/Picals/picals-crawler/src/pixiv/selector.rs:62)
 
 当前实现里 `count = 0` 时同样只抓 1 页：
 

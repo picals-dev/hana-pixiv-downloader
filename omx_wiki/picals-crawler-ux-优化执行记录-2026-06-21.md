@@ -2,7 +2,7 @@
 title: "Picals Crawler UX 优化执行记录 2026-06-21"
 tags: ["session-log", "ux", "config", "retry", "net", "paths"]
 created: 2026-06-21T07:20:39.000Z
-updated: 2026-06-21T07:20:39.000Z
+updated: 2026-06-22T15:47:42.000Z
 sources: []
 links: ["picals-crawler-产品设计文档.md", "picals-crawler-技术设计文档.md", "picals-crawler-项目理解基线.md"]
 category: session-log
@@ -38,6 +38,7 @@ schemaVersion: 1
   - `429 cooldown`
   - `fresh-on-retry`
   - `attempt / retry / failure` 事件
+- 后续在 2026-06-22 继续收敛为 `src/net/{catalog,client,event,policy,session,state,transfer}.rs` + `PixivNetSession` 结构，并删除旧 `collector` 概念。
 - 失败闭环已完成：
   - `DownloadResult` 携带结构化 `failure_records`
   - 命令收尾会对 `retryable=true` 项自动 replay 一次
@@ -49,6 +50,15 @@ schemaVersion: 1
 
 - `src/output.rs`
 - `src/net/mod.rs`
+- `src/net/catalog.rs`
+- `src/net/client.rs`
+- `src/net/event.rs`
+- `src/net/policy.rs`
+- `src/net/session.rs`
+- `src/net/state.rs`
+- `src/net/transfer.rs`
+- `src/pixiv/selector.rs`
+- `src/pixiv/url.rs`
 - `src/failure.rs`
 - `src/replay.rs`
 - `src/commands/retry_cmd.rs`

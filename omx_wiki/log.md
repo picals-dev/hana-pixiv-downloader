@@ -50,3 +50,7 @@
 ## [2026-06-21T16:10:00.000Z] add
 - **Pages:** picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, index.md
 - **Summary:** Added research report for download preview feasibility and ranking boundary, and refreshed wiki index
+
+## [2026-06-22T15:47:42.000Z] add
+- **Pages:** picals-crawler-技术设计文档.md, picals-crawler-项目理解基线.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-ux-优化执行记录-2026-06-21.md, index.md
+- **Summary:** Synced wiki with net 层 SSOT 实现、Pixiv 领域模块重组、共享 session 合同与新的实现记录页面

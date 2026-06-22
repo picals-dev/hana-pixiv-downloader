@@ -2,7 +2,7 @@
 title: "Picals Crawler 项目理解基线"
 tags: ["project", "baseline", "architecture", "product", "rust"]
 created: 2026-06-17T03:17:25.240Z
-updated: 2026-06-21T07:20:39.000Z
+updated: 2026-06-22T15:47:42.000Z
 sources: []
 links: ["typescript-原项目实现观察.md"]
 category: architecture
@@ -25,7 +25,7 @@ schemaVersion: 1
 ## Rust 技术方向
 
 - 技术设计已经明确 Rust 2024 + tokio + reqwest(rustls) + clap derive + inquire + indicatif + serde/toml + eyre/thiserror。
-- 目标架构是命令层、认证层、crawler 层、collector 层、downloader 层、config/error/utils 分层，不做过度抽象。
+- 目标架构现已收敛为命令层、认证层、crawler 层、net 层、pixiv 领域层、downloader 层、config/error/utils 分层，不做过度抽象。
 
 ## 与 TS 原项目的关键差异
 
@@ -41,7 +41,9 @@ schemaVersion: 1
   - `setup` 改为多步向导，完整展示凭据、五类 mode roots、通用下载参数与代理配置
   - `config show` 统一展示凭据与普通配置；`config set` 支持 `auth.phpsessid / auth.user_id / download.roots.*`
   - 下载目录模型升级为五类模式 root，并统一通过共享布局解析器输出 `context/illustId/illustId_pn.ext`
-  - 请求层已统一到 `PixivRequestRuntime`，覆盖 `429 cooldown / Retry-After / backoff / jitter / fresh-on-retry`
+  - 请求层已统一到 `PixivNetSession` + `src/net/{catalog,client,event,policy,session,state,transfer}.rs`
+  - `probe -> crawl -> download -> auto-replay` 已证明复用同一 `Arc<PixivNetSession>`；独立 `retry` 走同一 net stack 但新建实例
+  - `collector` 概念已移除，Pixiv 响应解析与 URL 语义已归入 `src/pixiv/{selector,url}.rs`
   - 失败项已升级为结构化 manifest，并支持 `picals-crawler retry <manifest-path>` 回放
   - 测试隔离已统一收口到 `src/test_support.rs`
 - 当前仓库的主要工作重心已从“实现 UX 优化”切换到“整理文档、准备后续发布与体验打磨”。
