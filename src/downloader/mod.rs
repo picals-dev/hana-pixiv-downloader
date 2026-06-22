@@ -5,22 +5,21 @@ pub mod image;
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use futures::{StreamExt, stream};
 use log::warn;
-use url::Url;
 
 use crate::{
-    auth::Credential,
     config::ResolvedDownloadOptions,
-    error::{AppResult, CrawlerError},
+    error::AppResult,
     failure::{FailureRecord, FailureStage},
-    net::{PixivRequestRuntime, RequestClass},
+    net::PixivNetSession,
     utils::progress::DownloadProgress,
 };
 
-use self::image::{DownloadItem, illust_id_from_image_url};
+use self::image::DownloadItem;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DownloadResult {
@@ -36,23 +35,20 @@ pub struct DownloadResult {
 pub struct Downloader {
     pub options: ResolvedDownloadOptions,
     pub directory: PathBuf,
-    referer_base_url: Url,
-    runtime: PixivRequestRuntime,
+    session: Arc<PixivNetSession>,
 }
 
 impl Downloader {
     pub fn new(
         options: ResolvedDownloadOptions,
         directory: PathBuf,
-        referer_base_url: Url,
-        credential: &Credential,
-    ) -> AppResult<Self> {
-        Ok(Self {
+        session: Arc<PixivNetSession>,
+    ) -> Self {
+        Self {
             directory,
-            runtime: PixivRequestRuntime::new(&options, credential)?,
             options,
-            referer_base_url,
-        })
+            session,
+        }
     }
 
     pub async fn download(&self, items: &[DownloadItem]) -> AppResult<DownloadResult> {
@@ -125,50 +121,19 @@ impl Downloader {
             return DownloadOutcome::Skipped;
         }
 
-        let referer = match build_referer(&self.referer_base_url, &item.image_url) {
-            Ok(referer) => referer,
-            Err(error) => {
-                warn!("构造 Referer 失败 {}: {error}", item.image_url);
-                let report = eyre::Report::new(error);
-                return DownloadOutcome::Failed(FailureRecord::from_report(
-                    self.options.mode,
-                    FailureStage::Download,
-                    Some(item.illust_id.clone()),
-                    Some(item.image_url.clone()),
-                    Some(target_path.to_string_lossy().into_owned()),
-                    &report,
-                ));
-            }
-        };
-
-        let temp_path = temporary_download_path(&target_path);
-        let _ = fs::remove_file(&temp_path);
         let url = item.image_url;
         let download_result = async {
-            let response = self
-                .runtime
-                .get_bytes(
-                    Url::parse(&url)?,
-                    Some(referer),
-                    RequestClass::ImageDownload,
-                )
+            let bytes = self
+                .session
+                .download_original_image(&url, &item.illust_id, &target_path)
                 .await?;
-
-            if let Some(parent) = target_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-
-            fs::write(&temp_path, &response.bytes)?;
-            fs::rename(&temp_path, &target_path)?;
-
-            Ok::<u64, eyre::Report>(response.bytes.len() as u64)
+            Ok::<u64, eyre::Report>(bytes)
         }
         .await;
 
         match download_result {
             Ok(bytes) => DownloadOutcome::Downloaded(bytes),
             Err(error) => {
-                let _ = fs::remove_file(&temp_path);
                 warn!("下载失败 {url}: {error}");
                 DownloadOutcome::Failed(FailureRecord::from_report(
                     self.options.mode,
@@ -190,45 +155,6 @@ enum DownloadOutcome {
     Failed(FailureRecord),
 }
 
-fn build_referer(referer_base_url: &Url, url: &str) -> Result<String, CrawlerError> {
-    let illust_id = illust_id_from_image_url(url)?;
-    Ok(referer_base_url
-        .join(&format!("/artworks/{illust_id}"))?
-        .to_string())
-}
-
 fn file_exists_and_nonempty(path: &Path) -> bool {
     fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
-}
-
-fn temporary_download_path(path: &Path) -> PathBuf {
-    let mut extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_string();
-
-    if extension.is_empty() {
-        extension = "part".to_string();
-    } else {
-        extension.push_str(".part");
-    }
-
-    path.with_extension(extension)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    use super::temporary_download_path;
-
-    #[test]
-    fn temporary_path_uses_part_extension() {
-        let path = PathBuf::from("/tmp/a.png");
-        assert_eq!(
-            temporary_download_path(&path),
-            PathBuf::from("/tmp/a.png.part")
-        );
-    }
 }

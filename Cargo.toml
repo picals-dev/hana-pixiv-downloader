@@ -7,8 +7,8 @@ authors = ["nonhana"]
 license = "MIT"
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
-reqwest = { version = "0.12", default-features = false, features = ["http2", "socks", "cookies", "rustls-tls", "charset", "json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "fs", "io-util"] }
+reqwest = { version = "0.12", default-features = false, features = ["http2", "socks", "cookies", "rustls-tls", "charset", "json", "stream"] }
 clap = { version = "4", features = ["derive", "wrap_help"] }
 inquire = "0.7"
 indicatif = "0.17"

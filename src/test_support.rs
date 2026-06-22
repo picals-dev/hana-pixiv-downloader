@@ -1,11 +1,14 @@
 //! 测试期共享的环境变量隔离工具。
 
 use std::path::Path;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex as StdMutex};
 
+use crate::net::SessionObserver;
 use tokio::sync::{Mutex, MutexGuard};
 
 static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static SESSION_OBSERVER: LazyLock<StdMutex<Option<SessionObserver>>> =
+    LazyLock::new(|| StdMutex::new(None));
 
 pub struct EnvVarGuard {
     key: &'static str,
@@ -58,4 +61,24 @@ pub fn set_config_home(home: &Path) -> ConfigHomeGuard {
         _home: EnvVarGuard::set("HOME", home),
         _xdg: EnvVarGuard::set("XDG_CONFIG_HOME", &xdg),
     }
+}
+
+pub struct SessionObserverGuard {
+    previous: Option<SessionObserver>,
+}
+
+impl Drop for SessionObserverGuard {
+    fn drop(&mut self) {
+        *SESSION_OBSERVER.lock().unwrap() = self.previous.take();
+    }
+}
+
+pub fn install_session_observer(observer: SessionObserver) -> SessionObserverGuard {
+    let mut slot = SESSION_OBSERVER.lock().unwrap();
+    let previous = slot.replace(observer);
+    SessionObserverGuard { previous }
+}
+
+pub fn current_session_observer() -> Option<SessionObserver> {
+    SESSION_OBSERVER.lock().unwrap().clone()
 }

@@ -1,6 +1,6 @@
 //! 下载命令共享辅助。
 
-use std::{fmt, path::Path};
+use std::{fmt, path::Path, sync::Arc};
 
 use comfy_table::{ContentArrangement, Table, presets::UTF8_FULL_CONDENSED};
 use inquire::{InquireError, Select, Text};
@@ -8,21 +8,19 @@ use inquire::{InquireError, Select, Text};
 use crate::{
     auth::Credential,
     cli::download::RankingMode,
-    collector::{
-        PixivCollector,
-        selector::{
-            count_user_illust_ids, select_bookmark_total, select_keyword_total,
-            select_ranking_total,
-        },
-    },
     config::{
         Config, DownloadMode, DownloadOverrides, EnvOverrides, ResolvedDownloadOptions, SortOrder,
     },
     downloader::DownloadResult,
     error::{AppResult, CrawlerError},
     failure::{FailureManifest, ReplayCommand, ReplayOptions},
+    net::{PixivNetSession, resolve_base_url},
     output::{OutputLayout, resolve_output_layout},
-    replay::{ReplayExecutionReport, replay_failures},
+    pixiv::selector::{
+        count_user_illust_ids, select_bookmark_total, select_keyword_total, select_ranking_total,
+    },
+    replay::{ReplayExecutionReport, replay_failures_with_session},
+    test_support::current_session_observer,
 };
 
 pub const RANKING_SORT_ERROR: &str = "download ranking 不支持自定义排序；仅允许默认值 date_desc";
@@ -103,6 +101,18 @@ pub fn load_required_credential() -> AppResult<Credential> {
     Credential::load()?.ok_or(CrawlerError::MissingCredential.into())
 }
 
+pub fn create_shared_session(
+    options: &ResolvedDownloadOptions,
+    credential: &Credential,
+) -> AppResult<Arc<PixivNetSession>> {
+    let base_url = resolve_base_url(None)?;
+    let mut builder = PixivNetSession::builder(options.clone(), credential.clone(), base_url);
+    if let Some(observer) = current_session_observer() {
+        builder = builder.with_observer(observer);
+    }
+    Ok(Arc::new(builder.build()?))
+}
+
 pub fn print_download_summary(target_directory: &Path, result: &DownloadResult) {
     println!("下载目录: {}", target_directory.display());
     println!(
@@ -144,10 +154,10 @@ pub fn resolve_ranking_mode(mode: Option<RankingMode>) -> AppResult<String> {
 }
 
 pub async fn probe_user_count(
-    collector: &PixivCollector,
+    session: &Arc<PixivNetSession>,
     user_id: &str,
 ) -> AppResult<BatchProbeSummary> {
-    let profile = collector.fetch_user_profile_all(user_id).await?;
+    let profile = session.fetch_user_profile_all(user_id).await?;
     let count = count_user_illust_ids(&profile)?;
     Ok(BatchProbeSummary {
         candidate_count: count,
@@ -157,13 +167,13 @@ pub async fn probe_user_count(
 }
 
 pub async fn probe_keyword_count(
-    collector: &PixivCollector,
+    session: &Arc<PixivNetSession>,
     query: &str,
     order: &str,
     mode: &str,
     include_ai: bool,
 ) -> AppResult<BatchProbeSummary> {
-    let value = collector
+    let value = session
         .fetch_keyword_page(query, order, mode, 1, include_ai)
         .await?;
     let count = select_keyword_total(&value)?;
@@ -175,10 +185,10 @@ pub async fn probe_keyword_count(
 }
 
 pub async fn probe_bookmark_count(
-    collector: &PixivCollector,
+    session: &Arc<PixivNetSession>,
     user_id: &str,
 ) -> AppResult<BatchProbeSummary> {
-    let value = collector.fetch_bookmark_page(user_id, 0, 1).await?;
+    let value = session.fetch_bookmark_page(user_id, 0, 1).await?;
     let count = select_bookmark_total(&value)?;
     Ok(BatchProbeSummary {
         candidate_count: count,
@@ -188,10 +198,10 @@ pub async fn probe_bookmark_count(
 }
 
 pub async fn probe_ranking_count(
-    collector: &PixivCollector,
+    session: &Arc<PixivNetSession>,
     mode: &str,
 ) -> AppResult<BatchProbeSummary> {
-    let value = collector.fetch_ranking_page(mode, 1).await?;
+    let value = session.fetch_ranking_page(mode, 1).await?;
     let count = select_ranking_total(&value)?;
     Ok(BatchProbeSummary {
         candidate_count: count,
@@ -322,7 +332,7 @@ fn map_inquire_error(error: InquireError) -> eyre::Report {
 }
 
 pub async fn finalize_download_result(
-    credential: &Credential,
+    session: Arc<PixivNetSession>,
     command: ReplayCommand,
     mut result: DownloadResult,
 ) -> AppResult<DownloadResult> {
@@ -341,8 +351,12 @@ pub async fn finalize_download_result(
             retryable_records
         );
         let replay_command = command.with_retry_profile();
-        let replay_report =
-            replay_failures(credential, &replay_command, result.failure_records.clone()).await?;
+        let replay_report = replay_failures_with_session(
+            Arc::clone(&session),
+            &replay_command,
+            result.failure_records.clone(),
+        )
+        .await?;
         result = apply_replay_report(result, replay_report);
     }
 
@@ -405,6 +419,11 @@ pub fn build_replay_command(
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::BTreeSet,
+        sync::{Arc, Mutex},
+    };
+
     use tempfile::tempdir;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
@@ -415,6 +434,7 @@ mod tests {
         auth::Credential,
         config::SortOrder,
         failure::{FailureManifest, FailureRecord, FailureStage},
+        net::{NetEvent, PixivNetSession},
         test_support::{EnvVarGuard, lock_env},
     };
 
@@ -462,6 +482,20 @@ mod tests {
             None,
         );
         let credential = Credential::new("cookie").unwrap();
+        let events = Arc::new(Mutex::new(Vec::<NetEvent>::new()));
+        let observer_events = Arc::clone(&events);
+        let session = Arc::new(
+            PixivNetSession::builder(
+                options.to_resolved(crate::config::DownloadMode::Illust),
+                credential.clone(),
+                server.uri().parse().unwrap(),
+            )
+            .with_observer(Arc::new(move |event| {
+                observer_events.lock().unwrap().push(event);
+            }))
+            .build()
+            .unwrap(),
+        );
         let result = crate::downloader::DownloadResult {
             total: 1,
             downloaded: 0,
@@ -488,13 +522,30 @@ mod tests {
             }],
         };
 
-        let finalized = finalize_download_result(&credential, command, result)
+        let finalized = finalize_download_result(Arc::clone(&session), command, result)
             .await
             .unwrap();
 
         assert_eq!(finalized.failed, 0);
         assert_eq!(finalized.downloaded, 1);
         assert!(finalized.failure_records.is_empty());
+        let session_ids = events
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|event| match event {
+                NetEvent::Attempt { session_id, .. }
+                | NetEvent::Retry { session_id, .. }
+                | NetEvent::Failure { session_id, .. }
+                | NetEvent::Cooldown { session_id, .. }
+                | NetEvent::TransferCompleted { session_id, .. } => *session_id,
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(session_ids.len(), 1);
+        assert_eq!(
+            session_ids.into_iter().next().unwrap(),
+            session.session_id()
+        );
         assert!(
             temp.path()
                 .join("illust-root/123456/123456_p0.png")
@@ -532,6 +583,14 @@ mod tests {
             None,
         );
         let credential = Credential::new("cookie").unwrap();
+        let session = Arc::new(
+            PixivNetSession::new_with_base_url(
+                options.to_resolved(crate::config::DownloadMode::Illust),
+                credential.clone(),
+                "https://www.pixiv.net".parse().unwrap(),
+            )
+            .unwrap(),
+        );
         let result = crate::downloader::DownloadResult {
             total: 1,
             downloaded: 0,
@@ -555,7 +614,7 @@ mod tests {
             }],
         };
 
-        let finalized = finalize_download_result(&credential, command, result)
+        let finalized = finalize_download_result(session, command, result)
             .await
             .unwrap();
 

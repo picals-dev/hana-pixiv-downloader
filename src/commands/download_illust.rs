@@ -3,15 +3,16 @@
 use crate::{
     cli::download::IllustArgs,
     commands::download_common::{
-        DownloadPresentation, build_replay_command, finalize_download_result,
-        load_required_credential, print_download_config_table, print_download_summary,
-        render_order_label, resolve_layout, resolve_options,
+        DownloadPresentation, build_replay_command, create_shared_session,
+        finalize_download_result, load_required_credential, print_download_config_table,
+        print_download_summary, render_order_label, resolve_layout, resolve_options,
     },
     config::DownloadMode,
     crawler::illust::IllustCrawler,
     error::AppResult,
-    utils::url::extract_illust_id,
+    pixiv::url::extract_illust_id,
 };
+use std::sync::Arc;
 
 pub async fn run(args: IllustArgs) -> AppResult<()> {
     let illust_id = extract_illust_id(&args.target)?;
@@ -35,10 +36,11 @@ pub async fn run(args: IllustArgs) -> AppResult<()> {
     }
 
     let credential = load_required_credential()?;
-    let crawler = IllustCrawler::new(illust_id, credential, options)?;
+    let session = create_shared_session(&options, &credential)?;
+    let crawler = IllustCrawler::new(illust_id, options, Arc::clone(&session))?;
     let result = crawler.run().await?;
     let result = finalize_download_result(
-        &crawler.context.credential,
+        session,
         build_replay_command(
             DownloadMode::Illust,
             &crawler.context.options,

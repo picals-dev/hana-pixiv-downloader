@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     config::{DownloadMode, ResolvedDownloadOptions, ensure_config_dir},
     error::{AppResult, CrawlerError},
+    net::is_retryable_http_status,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -319,7 +320,7 @@ pub fn classify_error(error: &eyre::Report) -> ErrorClassification {
             let status_code = status.as_u16();
             return ErrorClassification {
                 error_kind: format!("http_{status_code}"),
-                retryable: matches!(status_code, 408 | 425 | 429 | 500 | 502 | 503 | 504),
+                retryable: is_retryable_http_status(status),
             };
         }
         return ErrorClassification {
@@ -346,7 +347,9 @@ fn classify_crawler_error(error: &CrawlerError) -> ErrorClassification {
         },
         CrawlerError::HttpStatus { status, .. } => ErrorClassification {
             error_kind: format!("http_{status}"),
-            retryable: matches!(*status, 408 | 425 | 429 | 500 | 502 | 503 | 504),
+            retryable: reqwest::StatusCode::from_u16(*status)
+                .map(is_retryable_http_status)
+                .unwrap_or(false),
         },
         CrawlerError::Network(_) => ErrorClassification {
             error_kind: "network".to_string(),
@@ -490,5 +493,17 @@ mod tests {
 
         assert_eq!(classification.error_kind, "http_429");
         assert!(classification.retryable);
+    }
+
+    #[test]
+    fn classify_error_marks_non_retryable_http_status_as_non_retryable() {
+        let error = eyre::Report::new(CrawlerError::HttpStatus {
+            status: 501,
+            context: "not implemented".to_string(),
+        });
+        let classification = classify_error(&error);
+
+        assert_eq!(classification.error_kind, "http_501");
+        assert!(!classification.retryable);
     }
 }

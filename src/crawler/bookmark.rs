@@ -1,8 +1,8 @@
 //! BookmarkCrawler。
 
+use std::sync::Arc;
+
 use crate::{
-    auth::Credential,
-    collector::{PixivCollector, resolve_base_url, selector::select_bookmark_illust_ids},
     config::{DownloadMode, ResolvedDownloadOptions},
     crawler::CrawlContext,
     crawler::shared::{
@@ -10,9 +10,10 @@ use crate::{
     },
     downloader::DownloadResult,
     error::AppResult,
+    net::PixivNetSession,
     output::resolve_output_layout,
+    pixiv::selector::select_bookmark_illust_ids,
 };
-use url::Url;
 
 const BOOKMARK_PAGE_SIZE: usize = 48;
 
@@ -20,45 +21,42 @@ const BOOKMARK_PAGE_SIZE: usize = 48;
 pub struct BookmarkCrawler {
     pub user_id: String,
     pub context: CrawlContext,
-    base_url: Url,
 }
 
 impl BookmarkCrawler {
     pub fn new(
         user_id: String,
-        credential: Credential,
         mut options: ResolvedDownloadOptions,
+        session: Arc<PixivNetSession>,
     ) -> AppResult<Self> {
         options.mode = DownloadMode::Bookmark;
         Ok(Self {
             user_id,
-            context: CrawlContext::new(credential, options),
-            base_url: resolve_base_url(None)?,
+            context: CrawlContext::new(options, session),
         })
     }
 
-    pub fn new_with_base_url(
+    pub fn new_with_session(
         user_id: String,
-        credential: Credential,
         mut options: ResolvedDownloadOptions,
-        base_url: Url,
+        session: Arc<PixivNetSession>,
     ) -> Self {
         options.mode = DownloadMode::Bookmark;
         Self {
             user_id,
-            context: CrawlContext::new(credential, options),
-            base_url,
+            context: CrawlContext::new(options, session),
         }
     }
 
     pub async fn run(&self) -> AppResult<DownloadResult> {
-        let collector = self.build_collector()?;
         let target_count = self.context.options.count;
         let mut offset = 0usize;
         let mut illust_ids = Vec::new();
 
         loop {
-            let value = collector
+            let value = self
+                .context
+                .session
                 .fetch_bookmark_page(&self.user_id, offset, BOOKMARK_PAGE_SIZE)
                 .await?;
 
@@ -98,7 +96,7 @@ impl BookmarkCrawler {
             &self.user_id,
         )?;
         let (items, mut failure_records) = collect_download_items_for_illust_ids(
-            &collector,
+            &self.context.session,
             illust_ids.clone(),
             &layout,
             &self.context.options,
@@ -106,7 +104,7 @@ impl BookmarkCrawler {
         .await;
         failure_records.extend(
             export_tags_json(
-                &collector,
+                &self.context.session,
                 &illust_ids,
                 layout.context_dir(),
                 &self.context.options,
@@ -115,10 +113,9 @@ impl BookmarkCrawler {
         );
 
         let mut result = download_items(
-            &self.context.credential,
             self.context.options.clone(),
             layout.context_dir().to_path_buf(),
-            self.base_url.clone(),
+            Arc::clone(&self.context.session),
             &items,
         )
         .await?;
@@ -127,13 +124,5 @@ impl BookmarkCrawler {
         result.failure_records.extend(failure_records);
 
         Ok(result)
-    }
-
-    fn build_collector(&self) -> AppResult<PixivCollector> {
-        PixivCollector::new_with_base_url(
-            &self.context.options,
-            &self.context.credential,
-            self.base_url.clone(),
-        )
     }
 }

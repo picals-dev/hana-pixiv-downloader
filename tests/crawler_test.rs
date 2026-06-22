@@ -1,13 +1,10 @@
 #[path = "support/mod.rs"]
 mod common;
 
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use picals_crawler::{
     auth::Credential,
-    collector::selector::{
-        count_user_illust_ids, select_bookmark_total, select_keyword_total, select_ranking_total,
-    },
     config::{DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder},
     crawler::{
         bookmark::BookmarkCrawler,
@@ -17,8 +14,13 @@ use picals_crawler::{
         user::UserCrawler,
     },
     error::CrawlerError,
+    net::PixivNetSession,
+    pixiv::selector::{
+        count_user_illust_ids, select_bookmark_total, select_keyword_total, select_ranking_total,
+    },
 };
 use tempfile::tempdir;
+use url::Url;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{header, method, path},
@@ -51,6 +53,14 @@ fn options_with_tags(directory: PathBuf) -> ResolvedDownloadOptions {
     let mut options = options(directory);
     options.with_tags = true;
     options
+}
+
+fn session(
+    options: ResolvedDownloadOptions,
+    credential: Credential,
+    base_url: Url,
+) -> Arc<PixivNetSession> {
+    Arc::new(PixivNetSession::new_with_base_url(options, credential, base_url).unwrap())
 }
 
 #[tokio::test]
@@ -144,11 +154,14 @@ async fn user_crawler_can_download_images_with_mock_server() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_base_url(
+    let crawler = UserCrawler::new_with_session(
         "12345678".to_string(),
-        Credential::new("cookie").unwrap(),
         options(temp.path().to_path_buf()),
-        base_url,
+        session(
+            options(temp.path().to_path_buf()),
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -208,11 +221,14 @@ async fn illust_crawler_can_download_single_work() {
         .mount(&server)
         .await;
 
-    let crawler = IllustCrawler::new_with_base_url(
+    let crawler = IllustCrawler::new_with_session(
         "123456".to_string(),
-        Credential::new("cookie").unwrap(),
         options(temp.path().to_path_buf()),
-        base_url,
+        session(
+            options(temp.path().to_path_buf()),
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -266,11 +282,14 @@ async fn user_crawler_exports_tags_json_when_enabled() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_base_url(
+    let crawler = UserCrawler::new_with_session(
         "12345678".to_string(),
-        Credential::new("cookie").unwrap(),
         options_with_tags(temp.path().to_path_buf()),
-        base_url,
+        session(
+            options_with_tags(temp.path().to_path_buf()),
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -327,11 +346,14 @@ async fn user_crawler_skips_existing_file() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_base_url(
+    let crawler = UserCrawler::new_with_session(
         "12345678".to_string(),
-        Credential::new("cookie").unwrap(),
         options(temp.path().to_path_buf()),
-        base_url,
+        session(
+            options(temp.path().to_path_buf()),
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -370,11 +392,14 @@ async fn downloader_recovers_from_stale_part_file() {
         .mount(&server)
         .await;
 
-    let crawler = IllustCrawler::new_with_base_url(
+    let crawler = IllustCrawler::new_with_session(
         "123456".to_string(),
-        Credential::new("cookie").unwrap(),
         options(temp.path().to_path_buf()),
-        base_url,
+        session(
+            options(temp.path().to_path_buf()),
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -428,12 +453,15 @@ async fn keyword_crawler_can_download_search_results() {
 
     let mut keyword_options = options(temp.path().to_path_buf());
     keyword_options.count = 2;
-    let crawler = KeywordCrawler::new_with_base_url(
+    let crawler = KeywordCrawler::new_with_session(
         "初音ミク".to_string(),
         KeywordMode::Safe,
-        Credential::new("cookie").unwrap(),
-        keyword_options,
-        base_url,
+        keyword_options.clone(),
+        session(
+            keyword_options,
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -479,11 +507,14 @@ async fn ranking_crawler_can_download_ranked_results() {
 
     let mut ranking_options = options(temp.path().to_path_buf());
     ranking_options.count = 2;
-    let crawler = RankingCrawler::new_with_base_url(
+    let crawler = RankingCrawler::new_with_session(
         "daily".to_string(),
-        Credential::new("cookie").unwrap(),
-        ranking_options,
-        base_url,
+        ranking_options.clone(),
+        session(
+            ranking_options,
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -532,11 +563,14 @@ async fn bookmark_crawler_can_download_bookmarks() {
             .await;
     }
 
-    let crawler = BookmarkCrawler::new_with_base_url(
+    let crawler = BookmarkCrawler::new_with_session(
         "12345678".to_string(),
-        Credential::new_with_user_id("cookie", Some("12345678")).unwrap(),
         options(temp.path().to_path_buf()),
-        base_url,
+        session(
+            options(temp.path().to_path_buf()),
+            Credential::new_with_user_id("cookie", Some("12345678")).unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -590,11 +624,14 @@ async fn bookmark_crawler_truncates_to_requested_count() {
 
     let mut bookmark_options = options(temp.path().to_path_buf());
     bookmark_options.count = 1;
-    let crawler = BookmarkCrawler::new_with_base_url(
+    let crawler = BookmarkCrawler::new_with_session(
         "12345678".to_string(),
-        Credential::new_with_user_id("cookie", Some("12345678")).unwrap(),
-        bookmark_options,
-        base_url,
+        bookmark_options.clone(),
+        session(
+            bookmark_options,
+            Credential::new_with_user_id("cookie", Some("12345678")).unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -660,11 +697,14 @@ async fn bookmark_crawler_exports_tags_json_when_enabled() {
             .await;
     }
 
-    let crawler = BookmarkCrawler::new_with_base_url(
+    let crawler = BookmarkCrawler::new_with_session(
         "12345678".to_string(),
-        Credential::new_with_user_id("cookie", Some("12345678")).unwrap(),
         options_with_tags(temp.path().to_path_buf()),
-        base_url,
+        session(
+            options_with_tags(temp.path().to_path_buf()),
+            Credential::new_with_user_id("cookie", Some("12345678")).unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -738,11 +778,14 @@ async fn user_crawler_counts_partial_failures_without_failing_command() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_base_url(
+    let crawler = UserCrawler::new_with_session(
         "12345678".to_string(),
-        Credential::new("cookie").unwrap(),
         options(temp.path().to_path_buf()),
-        base_url,
+        session(
+            options(temp.path().to_path_buf()),
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
     );
 
     let result = crawler.run().await.unwrap();
@@ -768,11 +811,14 @@ async fn user_crawler_fails_on_profile_request_error() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_base_url(
+    let crawler = UserCrawler::new_with_session(
         "12345678".to_string(),
-        Credential::new("cookie").unwrap(),
         options(temp.path().to_path_buf()),
-        base_url,
+        session(
+            options(temp.path().to_path_buf()),
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
     );
 
     let error = crawler.run().await.unwrap_err();

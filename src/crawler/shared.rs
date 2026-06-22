@@ -1,36 +1,32 @@
 //! 多个下载入口共享的抓取辅助。
 
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path, sync::Arc};
 
 use futures::{StreamExt, stream};
 use log::warn;
-use url::Url;
 
 use crate::{
-    auth::Credential,
-    collector::{
-        PixivCollector,
-        selector::{select_illust_tags, select_page_original_urls},
-    },
     config::{ResolvedDownloadOptions, SortOrder},
     downloader::{DownloadResult, Downloader, image::DownloadItem},
     error::{AppResult, CrawlerError},
     failure::{FailureRecord, FailureStage},
+    net::PixivNetSession,
     output::OutputLayout,
+    pixiv::selector::{select_illust_tags, select_page_original_urls},
 };
 
 pub async fn collect_download_items_for_illust_ids(
-    collector: &PixivCollector,
+    session: &Arc<PixivNetSession>,
     illust_ids: Vec<String>,
     layout: &OutputLayout,
     options: &ResolvedDownloadOptions,
 ) -> (Vec<DownloadItem>, Vec<FailureRecord>) {
     let page_results = stream::iter(illust_ids.into_iter().map(|illust_id| {
-        let collector = collector.clone();
+        let session = Arc::clone(session);
         let layout = layout.clone();
 
         async move {
-            let response = collector.fetch_illust_pages(&illust_id).await;
+            let response = session.fetch_illust_pages(&illust_id).await;
 
             (illust_id, layout, response)
         }
@@ -95,7 +91,7 @@ pub async fn collect_download_items_for_illust_ids(
 }
 
 pub async fn export_tags_json(
-    collector: &PixivCollector,
+    session: &Arc<PixivNetSession>,
     illust_ids: &[String],
     output_directory: &Path,
     options: &ResolvedDownloadOptions,
@@ -105,10 +101,10 @@ pub async fn export_tags_json(
     }
 
     let tag_results = stream::iter(illust_ids.iter().cloned().map(|illust_id| {
-        let collector = collector.clone();
+        let session = Arc::clone(session);
 
         async move {
-            let response = collector.fetch_illust_detail(&illust_id).await;
+            let response = session.fetch_illust_detail(&illust_id).await;
 
             (illust_id, response)
         }
@@ -206,12 +202,11 @@ pub fn sort_illust_ids(illust_ids: &mut [String], sort: SortOrder) -> AppResult<
 }
 
 pub async fn download_items(
-    credential: &Credential,
     options: ResolvedDownloadOptions,
     output_directory: std::path::PathBuf,
-    referer_base_url: Url,
+    session: Arc<PixivNetSession>,
     items: &[DownloadItem],
 ) -> AppResult<DownloadResult> {
-    let downloader = Downloader::new(options, output_directory, referer_base_url, credential)?;
+    let downloader = Downloader::new(options, output_directory, session);
     downloader.download(items).await
 }

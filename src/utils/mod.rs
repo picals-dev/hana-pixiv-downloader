@@ -2,4 +2,3 @@
 
 pub mod progress;
 pub mod retry;
-pub mod url;

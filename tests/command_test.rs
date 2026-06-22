@@ -1,3 +1,8 @@
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+};
+
 use clap::{CommandFactory, Parser};
 use picals_crawler::{
     auth::Credential,
@@ -5,13 +10,27 @@ use picals_crawler::{
     commands,
     config::{Config, DownloadConfig, POPULAR_SORT_MIGRATION_MESSAGE, ProxyConfig, SortOrder},
     failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
-    test_support::{EnvVarGuard, lock_env, set_config_home},
+    net::NetEvent,
+    test_support::{EnvVarGuard, install_session_observer, lock_env, set_config_home},
 };
 use tempfile::tempdir;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{header, method, path},
 };
+
+fn observed_session_ids(events: &[NetEvent]) -> BTreeSet<u64> {
+    events
+        .iter()
+        .map(|event| match event {
+            NetEvent::Attempt { session_id, .. }
+            | NetEvent::Retry { session_id, .. }
+            | NetEvent::Failure { session_id, .. }
+            | NetEvent::Cooldown { session_id, .. }
+            | NetEvent::TransferCompleted { session_id, .. } => *session_id,
+        })
+        .collect()
+}
 
 #[test]
 fn ranking_help_does_not_expose_sort_r18_or_no_ai() {
@@ -373,6 +392,219 @@ async fn retry_command_can_recover_retryable_download_record() {
             .join("illust-root/123456/123456_p0.png")
             .exists()
     );
+}
+
+#[tokio::test]
+async fn auto_replay_reuses_same_session_instance_for_single_download_command() {
+    let _lock = lock_env().await;
+    let temp = tempdir().unwrap();
+    let server = MockServer::start().await;
+    let _config_home = set_config_home(temp.path());
+    let _base_url = EnvVarGuard::set("PICALS_PIXIV_BASE_URL", server.uri());
+    let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
+    let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
+    let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
+    Credential::new("cookie").unwrap().save().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/ajax/user/12345678/profile/all"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "error": false,
+            "body": { "illusts": { "123456": {} }, "manga": {} }
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/ajax/illust/123456/pages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "error": false,
+            "body": [{
+                "urls": {
+                    "original": format!("{}/img-original/123456_p0.png", server.uri())
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/img-original/123456_p0.png"))
+        .and(header(
+            "referer",
+            format!("{}/artworks/123456", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(500))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/img-original/123456_p0.png"))
+        .and(header(
+            "referer",
+            format!("{}/artworks/123456", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ok".to_vec()))
+        .mount(&server)
+        .await;
+
+    let events = Arc::new(Mutex::new(Vec::<NetEvent>::new()));
+    let observer_events = Arc::clone(&events);
+    let _observer = install_session_observer(Arc::new(move |event| {
+        observer_events.lock().unwrap().push(event);
+    }));
+
+    let cli = Cli::parse_from([
+        "picals-crawler",
+        "download",
+        "user",
+        "12345678",
+        "--count",
+        "1",
+        "--retry",
+        "1",
+        "--to",
+        temp.path().join("user-root").to_string_lossy().as_ref(),
+    ]);
+    commands::dispatch(cli).await.unwrap();
+
+    let session_ids = observed_session_ids(&events.lock().unwrap());
+    assert_eq!(session_ids.len(), 1);
+    assert!(
+        temp.path()
+            .join("user-root/12345678/123456/123456_p0.png")
+            .exists()
+    );
+}
+
+#[tokio::test]
+async fn standalone_retry_uses_new_session_instance_but_same_net_stack() {
+    let _lock = lock_env().await;
+    let temp = tempdir().unwrap();
+    let server = MockServer::start().await;
+    let _config_home = set_config_home(temp.path());
+    let _base_url = EnvVarGuard::set("PICALS_PIXIV_BASE_URL", server.uri());
+    let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
+    let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
+    let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
+    Credential::new("cookie").unwrap().save().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/ajax/illust/111111/pages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "error": false,
+            "body": [{
+                "urls": {
+                    "original": format!("{}/img-original/111111_p0.png", server.uri())
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/img-original/111111_p0.png"))
+        .and(header(
+            "referer",
+            format!("{}/artworks/111111", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ok".to_vec()))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/img-original/222222_p0.png"))
+        .and(header(
+            "referer",
+            format!("{}/artworks/222222", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ok".to_vec()))
+        .mount(&server)
+        .await;
+
+    let command_events = Arc::new(Mutex::new(Vec::<NetEvent>::new()));
+    let command_observer_events = Arc::clone(&command_events);
+    let _command_observer = install_session_observer(Arc::new(move |event| {
+        command_observer_events.lock().unwrap().push(event);
+    }));
+
+    let cli = Cli::parse_from([
+        "picals-crawler",
+        "download",
+        "illust",
+        "111111",
+        "--to",
+        temp.path().join("illust-root").to_string_lossy().as_ref(),
+    ]);
+    commands::dispatch(cli).await.unwrap();
+    let command_session_ids = observed_session_ids(&command_events.lock().unwrap());
+    assert_eq!(command_session_ids.len(), 1);
+    drop(_command_observer);
+
+    let manifest_path = temp.path().join("retry-manifest.json");
+    let manifest = FailureManifest::new(
+        ReplayCommand::Illust {
+            illust_id: "222222".to_string(),
+            options: ReplayOptions {
+                directory: temp
+                    .path()
+                    .join("retry-root")
+                    .to_string_lossy()
+                    .into_owned(),
+                count: 1,
+                sort: SortOrder::DateDesc,
+                r18: false,
+                ai: true,
+                concurrent: 1,
+                timeout: 30,
+                retry: 2,
+                with_tags: false,
+                proxy_url: None,
+                dry_run: false,
+            },
+        },
+        vec![FailureRecord {
+            mode: picals_crawler::config::DownloadMode::Illust,
+            stage: FailureStage::Download,
+            illust_id: Some("222222".to_string()),
+            image_url: Some(format!("{}/img-original/222222_p0.png", server.uri())),
+            target_path: Some(
+                temp.path()
+                    .join("retry-root/222222/222222_p0.png")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            error_kind: "timeout".to_string(),
+            error_message: "timeout".to_string(),
+            retryable: true,
+        }],
+    )
+    .unwrap();
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let retry_events = Arc::new(Mutex::new(Vec::<NetEvent>::new()));
+    let retry_observer_events = Arc::clone(&retry_events);
+    let _retry_observer = install_session_observer(Arc::new(move |event| {
+        retry_observer_events.lock().unwrap().push(event);
+    }));
+
+    let cli = Cli::parse_from([
+        "picals-crawler",
+        "retry",
+        manifest_path.to_string_lossy().as_ref(),
+    ]);
+    commands::dispatch(cli).await.unwrap();
+
+    let retry_session_ids = observed_session_ids(&retry_events.lock().unwrap());
+    assert_eq!(retry_session_ids.len(), 1);
+    assert_ne!(
+        command_session_ids.into_iter().next().unwrap(),
+        retry_session_ids.into_iter().next().unwrap()
+    );
+    assert!(temp.path().join("retry-root/222222/222222_p0.png").exists());
 }
 
 #[tokio::test]

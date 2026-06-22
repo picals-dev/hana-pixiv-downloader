@@ -7,19 +7,18 @@ pub mod ranking;
 pub mod shared;
 pub mod user;
 
-use crate::{auth::Credential, config::ResolvedDownloadOptions};
+use std::sync::Arc;
+
+use crate::{config::ResolvedDownloadOptions, net::PixivNetSession};
 
 #[derive(Debug, Clone)]
 pub struct CrawlContext {
-    pub credential: Credential,
     pub options: ResolvedDownloadOptions,
+    pub session: Arc<PixivNetSession>,
 }
 
 impl CrawlContext {
-    pub fn new(credential: Credential, options: ResolvedDownloadOptions) -> Self {
-        Self {
-            credential,
-            options,
-        }
+    pub fn new(options: ResolvedDownloadOptions, session: Arc<PixivNetSession>) -> Self {
+        Self { options, session }
     }
 }

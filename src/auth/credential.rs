@@ -102,10 +102,6 @@ impl Credential {
         self.validate()
     }
 
-    pub fn cookie_header(&self) -> String {
-        format!("PHPSESSID={}", self.phpsessid)
-    }
-
     pub fn parse_user_id(input: &str) -> AppResult<String> {
         normalize_user_id(Some(input.to_string()))?
             .ok_or_else(|| eyre!(CrawlerError::Auth("userId 不能为空".to_string())))
@@ -191,7 +187,7 @@ mod tests {
         let loaded = Credential::load_from(&path).unwrap().unwrap();
 
         assert_eq!(loaded, credential);
-        assert_eq!(loaded.cookie_header(), "PHPSESSID=test-cookie");
+        assert_eq!(loaded.phpsessid, "test-cookie");
         assert_eq!(loaded.user_id(), Some("12345678"));
     }
 

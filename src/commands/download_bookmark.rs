@@ -2,17 +2,17 @@
 
 use crate::{
     cli::download::BookmarkArgs,
-    collector::PixivCollector,
     commands::download_common::{
-        DownloadPresentation, build_replay_command, finalize_download_result,
-        load_required_credential, print_bulk_probe_summary, print_download_config_table,
-        print_download_summary, probe_bookmark_count, render_order_label, resolve_layout,
-        resolve_options, resolve_planned_count,
+        DownloadPresentation, build_replay_command, create_shared_session,
+        finalize_download_result, load_required_credential, print_bulk_probe_summary,
+        print_download_config_table, print_download_summary, probe_bookmark_count,
+        render_order_label, resolve_layout, resolve_options, resolve_planned_count,
     },
     config::DownloadMode,
     crawler::bookmark::BookmarkCrawler,
     error::AppResult,
 };
+use std::sync::Arc;
 
 pub async fn run(args: BookmarkArgs) -> AppResult<()> {
     let options = resolve_options(DownloadMode::Bookmark, &args.to_overrides())?;
@@ -20,8 +20,8 @@ pub async fn run(args: BookmarkArgs) -> AppResult<()> {
     let user_id = credential.require_user_id()?.to_string();
     let layout = resolve_layout(&options, &user_id)?;
     let target_directory = layout.context_dir().to_path_buf();
-    let collector = PixivCollector::new(&options, &credential)?;
-    let probe = probe_bookmark_count(&collector, &user_id).await?;
+    let session = create_shared_session(&options, &credential)?;
+    let probe = probe_bookmark_count(&session, &user_id).await?;
     print_bulk_probe_summary(&probe);
     let planned_count = resolve_planned_count(&options, probe.candidate_count)?;
     let mut options = options;
@@ -42,10 +42,10 @@ pub async fn run(args: BookmarkArgs) -> AppResult<()> {
         return Ok(());
     }
 
-    let crawler = BookmarkCrawler::new(user_id, credential, options)?;
+    let crawler = BookmarkCrawler::new(user_id, options, Arc::clone(&session))?;
     let result = crawler.run().await?;
     let result = finalize_download_result(
-        &crawler.context.credential,
+        session,
         build_replay_command(
             DownloadMode::Bookmark,
             &crawler.context.options,

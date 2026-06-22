@@ -1,18 +1,19 @@
 //! `picals-crawler download user` 命令。
 
+use std::sync::Arc;
+
 use crate::{
-    auth::Credential,
     cli::download::UserArgs,
-    collector::PixivCollector,
     commands::download_common::{
-        DownloadPresentation, build_replay_command, finalize_download_result,
-        print_bulk_probe_summary, print_download_config_table, print_download_summary,
-        probe_user_count, render_order_label, resolve_layout, resolve_planned_count,
+        DownloadPresentation, build_replay_command, create_shared_session,
+        finalize_download_result, print_bulk_probe_summary, print_download_config_table,
+        print_download_summary, probe_user_count, render_order_label, resolve_layout,
+        resolve_planned_count,
     },
     config::{Config, DownloadMode, EnvOverrides, SortOrder},
     crawler::user::UserCrawler,
     error::{AppResult, CrawlerError},
-    utils::url::extract_user_id,
+    pixiv::url::extract_user_id,
 };
 
 pub async fn run(args: UserArgs) -> AppResult<()> {
@@ -24,10 +25,10 @@ pub async fn run(args: UserArgs) -> AppResult<()> {
     ensure_sort_supported(options.sort)?;
     let layout = resolve_layout(&options, &artist_id)?;
     let target_directory = layout.context_dir().to_path_buf();
-    let credential = Credential::load()?;
+    let credential = crate::auth::Credential::load()?;
     let credential = credential.ok_or(CrawlerError::MissingCredential)?;
-    let collector = PixivCollector::new(&options, &credential)?;
-    let probe = probe_user_count(&collector, &artist_id).await?;
+    let session = create_shared_session(&options, &credential)?;
+    let probe = probe_user_count(&session, &artist_id).await?;
     print_bulk_probe_summary(&probe);
     let planned_count = resolve_planned_count(&options, probe.candidate_count)?;
     let mut options = options;
@@ -48,10 +49,10 @@ pub async fn run(args: UserArgs) -> AppResult<()> {
         return Ok(());
     }
 
-    let crawler = UserCrawler::new(artist_id, credential, options)?;
+    let crawler = UserCrawler::new(artist_id, options, Arc::clone(&session))?;
     let result = crawler.run().await?;
     let result = finalize_download_result(
-        &crawler.context.credential,
+        session,
         build_replay_command(
             DownloadMode::User,
             &crawler.context.options,

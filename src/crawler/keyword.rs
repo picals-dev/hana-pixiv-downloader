@@ -1,8 +1,8 @@
 //! KeywordCrawler。
 
+use std::sync::Arc;
+
 use crate::{
-    auth::Credential,
-    collector::{PixivCollector, resolve_base_url, selector::select_keyword_illust_ids},
     config::{DownloadMode, ResolvedDownloadOptions, SortOrder},
     crawler::CrawlContext,
     crawler::shared::{
@@ -10,16 +10,16 @@ use crate::{
     },
     downloader::DownloadResult,
     error::AppResult,
+    net::PixivNetSession,
     output::resolve_output_layout,
+    pixiv::selector::select_keyword_illust_ids,
 };
-use url::Url;
 
 #[derive(Debug, Clone)]
 pub struct KeywordCrawler {
     pub query: String,
     pub mode: KeywordMode,
     pub context: CrawlContext,
-    base_url: Url,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,36 +32,32 @@ impl KeywordCrawler {
     pub fn new(
         query: String,
         mode: KeywordMode,
-        credential: Credential,
         mut options: ResolvedDownloadOptions,
+        session: Arc<PixivNetSession>,
     ) -> AppResult<Self> {
         options.mode = DownloadMode::Keyword;
         Ok(Self {
             query,
             mode,
-            context: CrawlContext::new(credential, options),
-            base_url: resolve_base_url(None)?,
+            context: CrawlContext::new(options, session),
         })
     }
 
-    pub fn new_with_base_url(
+    pub fn new_with_session(
         query: String,
         mode: KeywordMode,
-        credential: Credential,
         mut options: ResolvedDownloadOptions,
-        base_url: Url,
+        session: Arc<PixivNetSession>,
     ) -> Self {
         options.mode = DownloadMode::Keyword;
         Self {
             query,
             mode,
-            context: CrawlContext::new(credential, options),
-            base_url,
+            context: CrawlContext::new(options, session),
         }
     }
 
     pub async fn run(&self) -> AppResult<DownloadResult> {
-        let collector = self.build_collector()?;
         let order = match self.context.options.sort {
             SortOrder::DateDesc => "date_d",
             SortOrder::DateAsc => "date",
@@ -80,7 +76,9 @@ impl KeywordCrawler {
 
         let mut illust_ids = Vec::new();
         for page in 1..=page_count {
-            let value = collector
+            let value = self
+                .context
+                .session
                 .fetch_keyword_page(&self.query, order, mode, page, self.context.options.ai)
                 .await?;
             illust_ids.extend(select_keyword_illust_ids(&value)?);
@@ -98,7 +96,7 @@ impl KeywordCrawler {
             &self.query,
         )?;
         let (items, mut failure_records) = collect_download_items_for_illust_ids(
-            &collector,
+            &self.context.session,
             illust_ids.clone(),
             &layout,
             &self.context.options,
@@ -106,7 +104,7 @@ impl KeywordCrawler {
         .await;
         failure_records.extend(
             export_tags_json(
-                &collector,
+                &self.context.session,
                 &illust_ids,
                 layout.context_dir(),
                 &self.context.options,
@@ -114,10 +112,9 @@ impl KeywordCrawler {
             .await,
         );
         let mut result = download_items(
-            &self.context.credential,
             self.context.options.clone(),
             layout.context_dir().to_path_buf(),
-            self.base_url.clone(),
+            Arc::clone(&self.context.session),
             &items,
         )
         .await?;
@@ -126,13 +123,5 @@ impl KeywordCrawler {
         result.failure_records.extend(failure_records);
 
         Ok(result)
-    }
-
-    fn build_collector(&self) -> AppResult<PixivCollector> {
-        PixivCollector::new_with_base_url(
-            &self.context.options,
-            &self.context.credential,
-            self.base_url.clone(),
-        )
     }
 }

@@ -3,7 +3,7 @@
 use crate::{
     cli::download::{DirectDownloadArgs, IllustArgs, KeywordArgs, UserArgs},
     error::{AppResult, CrawlerError},
-    utils::url::{PixivUrlTarget, parse_pixiv_url_target},
+    pixiv::url::{PixivUrlTarget, parse_pixiv_url_target},
 };
 
 pub async fn run(args: DirectDownloadArgs) -> AppResult<()> {

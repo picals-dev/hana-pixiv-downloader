@@ -8,12 +8,13 @@ use url::Url;
 
 use crate::{
     auth::Credential,
-    collector::{PixivCollector, selector::select_current_user_id},
     config::{
         Config, DownloadMode, DownloadOverrides, DownloadRootsConfig, EnvOverrides,
         ResolvedDownloadOptions, SortOrder,
     },
     error::AppResult,
+    net::PixivNetSession,
+    pixiv::selector::select_current_user_id,
 };
 
 pub async fn run() -> AppResult<()> {
@@ -325,7 +326,7 @@ async fn fetch_current_user_id_with_options(
     credential: &Credential,
     options: &ResolvedDownloadOptions,
 ) -> AppResult<String> {
-    let base_url = crate::collector::resolve_base_url(None)?;
+    let base_url = crate::net::resolve_base_url(None)?;
     fetch_current_user_id_with_base_url(credential, options, base_url).await
 }
 
@@ -334,8 +335,9 @@ async fn fetch_current_user_id_with_base_url(
     options: &ResolvedDownloadOptions,
     base_url: Url,
 ) -> AppResult<String> {
-    let collector = PixivCollector::new_with_base_url(options, credential, base_url)?;
-    let page = collector.fetch_current_user_homepage().await?;
+    let session =
+        PixivNetSession::new_with_base_url(options.clone(), credential.clone(), base_url)?;
+    let page = session.fetch_current_user_homepage().await?;
     Ok(select_current_user_id(
         page.header_user_id.as_deref(),
         &page.html,

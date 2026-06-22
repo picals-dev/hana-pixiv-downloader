@@ -1,7 +1,7 @@
 #[path = "support/mod.rs"]
 mod common;
 
-use picals_crawler::collector::selector::{
+use picals_crawler::pixiv::selector::{
     select_bookmark_illust_ids, select_current_user_id, select_illust_tags,
     select_keyword_illust_ids, select_page_original_urls, select_ranking_illust_ids,
     select_user_illust_ids,

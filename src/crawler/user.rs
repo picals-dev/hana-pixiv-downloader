@@ -1,10 +1,8 @@
 //! UserCrawler。
 
-use url::Url;
+use std::sync::Arc;
 
 use crate::{
-    auth::Credential,
-    collector::{PixivCollector, resolve_base_url, selector::select_user_illust_ids},
     config::{DownloadMode, ResolvedDownloadOptions},
     crawler::CrawlContext,
     crawler::shared::{
@@ -12,47 +10,48 @@ use crate::{
     },
     downloader::DownloadResult,
     error::AppResult,
+    net::PixivNetSession,
     output::resolve_output_layout,
+    pixiv::selector::select_user_illust_ids,
 };
 
 #[derive(Debug, Clone)]
 pub struct UserCrawler {
     pub artist_id: String,
     pub context: CrawlContext,
-    base_url: Url,
 }
 
 impl UserCrawler {
     pub fn new(
         artist_id: String,
-        credential: Credential,
         mut options: ResolvedDownloadOptions,
+        session: Arc<PixivNetSession>,
     ) -> AppResult<Self> {
         options.mode = DownloadMode::User;
         Ok(Self {
             artist_id,
-            context: CrawlContext::new(credential, options),
-            base_url: resolve_base_url(None)?,
+            context: CrawlContext::new(options, session),
         })
     }
 
-    pub fn new_with_base_url(
+    pub fn new_with_session(
         artist_id: String,
-        credential: Credential,
         mut options: ResolvedDownloadOptions,
-        base_url: Url,
+        session: Arc<PixivNetSession>,
     ) -> Self {
         options.mode = DownloadMode::User;
         Self {
             artist_id,
-            context: CrawlContext::new(credential, options),
-            base_url,
+            context: CrawlContext::new(options, session),
         }
     }
 
     pub async fn run(&self) -> AppResult<DownloadResult> {
-        let collector = self.build_collector()?;
-        let profile = collector.fetch_user_profile_all(&self.artist_id).await?;
+        let profile = self
+            .context
+            .session
+            .fetch_user_profile_all(&self.artist_id)
+            .await?;
 
         let mut illust_ids = select_user_illust_ids(&profile)?;
         sort_illust_ids(&mut illust_ids, self.context.options.sort)?;
@@ -65,7 +64,7 @@ impl UserCrawler {
             &self.artist_id,
         )?;
         let (items, mut failure_records) = collect_download_items_for_illust_ids(
-            &collector,
+            &self.context.session,
             illust_ids.clone(),
             &layout,
             &self.context.options,
@@ -73,7 +72,7 @@ impl UserCrawler {
         .await;
         failure_records.extend(
             export_tags_json(
-                &collector,
+                &self.context.session,
                 &illust_ids,
                 layout.context_dir(),
                 &self.context.options,
@@ -81,10 +80,9 @@ impl UserCrawler {
             .await,
         );
         let mut result = download_items(
-            &self.context.credential,
             self.context.options.clone(),
             layout.context_dir().to_path_buf(),
-            self.base_url.clone(),
+            Arc::clone(&self.context.session),
             &items,
         )
         .await?;
@@ -94,14 +92,6 @@ impl UserCrawler {
         result.failure_records.extend(failure_records);
 
         Ok(result)
-    }
-
-    fn build_collector(&self) -> AppResult<PixivCollector> {
-        PixivCollector::new_with_base_url(
-            &self.context.options,
-            &self.context.credential,
-            self.base_url.clone(),
-        )
     }
 }
 #[cfg(test)]

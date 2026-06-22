@@ -5,7 +5,6 @@
 
 pub mod auth;
 pub mod cli;
-pub mod collector;
 pub mod commands;
 pub mod config;
 pub mod crawler;
@@ -14,6 +13,7 @@ pub mod error;
 pub mod failure;
 pub mod net;
 pub mod output;
+pub mod pixiv;
 pub mod replay;
 pub mod test_support;
 pub mod utils;
