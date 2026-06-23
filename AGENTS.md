@@ -12,6 +12,12 @@ cargo test -- --nocapture            # 查看测试中的 println 输出
 cargo check                          # 仅类型检查，无产物
 ```
 
+## 测试路由
+
+- **凡是新增、迁移、重构、审查测试，或新增 `tests/support/*` / `src/test_support.rs` / `src/net/test_hook.rs` 相关测试 seam 时，必须先阅读**：[omx_wiki/picals-crawler-测试指南.md](/Users/nonhana/code_life/Picals/picals-crawler/omx_wiki/picals-crawler-测试指南.md)
+- 该文档是当前仓库测试分层、support 边界、CLI harness、结构性禁止项与验证命令的 SSOT。
+- 如果历史测试写法、旧 session-log、或个人习惯与该文档冲突，以测试指南为准。
+
 ## 技术栈
 
 | 领域 | 选型 | 理由 |
