@@ -1,10 +1,10 @@
 ---
 title: "Picals Crawler 产品设计文档"
-tags: ["product", "design", "requirements", "cli", "pixiv"]
+tags: ["product", "design", "requirements"]
 created: 2026-06-16T00:00:00.000Z
-updated: 2026-06-21T07:20:39.000Z
+updated: 2026-06-23T09:19:53.000Z
 sources: ["_notes/nea/product-design.md"]
-links: ["picals-crawler-技术设计文档.md", "picals-crawler-项目理解基线.md", "typescript-原项目实现观察.md"]
+links: ["picals-crawler-技术设计文档.md", "picals-crawler-项目理解基线.md", "typescript-原项目实现观察.md", "picals-crawler-产品设计附录-交互与路线图.md", "picals-crawler-ux-优化执行记录-2026-06-21.md"]
 category: product
 confidence: high
 schemaVersion: 1
@@ -186,106 +186,13 @@ picals-crawler download bookmark --count 200
 
 ## 四、CLI 交互设计
 
-### 4.1 首次使用完整流程
+- 当前交互设计的稳定结论是：
+  - `setup` 保持多步向导，明文展示凭据并在过程中自动探测 `userId`
+  - 日常下载体验强调“低认知成本 + 进度可视化 + 可重试补救”
+  - 断点续传语义已收敛为“重新执行同一条命令即可”
+  - 失败补救闭环固定为 `auto-replay + manifest + retry`
 
-```
-$ picals-crawler setup
-
-  🌸 欢迎使用 Picals Crawler！
-
-  在开始下载之前，需要先完成 Pixiv 认证。请按以下步骤操作：
-
-  ─────────────────────────────────────────────
-
-  Step 1: 在浏览器中打开 https://www.pixiv.net 并登录你的 Pixiv 账号
-
-  Step 2: 登录后，按 F12 打开开发者工具
-        → 点击顶部的 "Application" 标签
-        → 左侧找到 Cookies → https://www.pixiv.net
-        → 找到 PHPSESSID 这一项
-
-  Step 3: 复制 PHPSESSID 的值（一串字母数字），粘贴到下面：
-
-  PHPSESSID: █
-
-  ─────────────────────────────────────────────
-
-  可选：设置默认下载目录（回车使用默认值：~/Pictures/Pixiv/）
-
-  下载目录: █
-
-  ✅ 配置完成！认证信息与当前账号身份已保存。
-
-  现在可以开始下载了：
-
-    picals-crawler download user <画师ID>
-    picals-crawler download bookmark
-
-  查看完整帮助: picals-crawler --help
-```
-
-### 4.2 日常下载体验
-
-```
-$ picals-crawler download user 12345678
-
-  👤 作者: はな (ID: 12345678)
-  🖼️  共 247 幅作品
-
-  [00:15] ████████████████░░░░  83%  (206/247)
-  📥 已下载: 152.3 MB  ⚡ 速度: 10.2 MB/s  ⏱ 预估剩余: 3s
-
-  ✅ 下载完成！
-  📂 /Users/nonhana/Pictures/Pixiv/はな(12345678)/
-     ├── 12345678_p0.jpg
-     ├── 12345679_p0.png
-     ├── 12345679_p1.png  (多图作品)
-     ├── ...
-     └── tags.json
-```
-
-### 4.3 断点续传
-
-```
-$ picals-crawler download user 12345678
-
-  👤 作者: はな (ID: 12345678)
-  🖼️  共 247 幅作品
-  ⏭️  已跳过 206 幅（已下载）
-  📥 剩余 41 幅
-
-  [00:03] ████████████████████  100%  (41/41)
-  ...
-```
-
-### 4.4 错误处理
-
-```
-$ picals-crawler download user 99999999
-
-  ❌ 错误: 未找到该用户，请检查用户 ID 是否正确
-```
-
-```
-$ picals-crawler download user 12345678
-
-  ❌ 错误: 未找到认证信息，请先运行 picals-crawler setup
-```
-
-- 错误信息中文化
-- 网络错误时自动重试（默认 3 次），并显示重试进度
-- 部分下载失败不影响整体流程，最后汇总失败列表
-
-### 4.5 失败补救闭环
-
-- 命令结束后，若存在 `retryable=true` 的失败记录，会自动做一次低并发补拉。
-- 若仍有失败，系统会把失败项落盘为结构化 manifest，并输出唯一入口：
-
-```bash
-picals-crawler retry <manifest-path>
-```
-
-- `retry` 命令默认只回放 `retryable=true` 的记录；不可重试项会被明确跳过并计数。
+完整示例与交互稿已移动到附录：[[Picals Crawler 产品设计附录：交互与路线图]]
 
 ---
 
@@ -385,38 +292,9 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 
 ## 十、版本规划
 
-### v0.1.0 — MVP（当前目标）
+- 当前版本判断已经更新为：
+  - `v0.1.0 / v0.2.0` 对应的主链路与功能完善目标已完成
+  - `v0.3.x` 阶段重点已转向 README、分发与发布准备
+  - `v1.0.0` 仍以安装体验、文档与稳定发布节奏为主要门槛
 
-- `picals-crawler setup`（交互式认证）
-- `picals-crawler download user <id|url>`（下载画师作品）
-- 基本进度条
-- 断点续传
-- macOS / Windows 预编译二进制
-- GitHub Release 自动构建
-
-> 现状注记（2026-06-18）：上述主链路已经完成。当前仓库的主要实施目标已切换到 v0.2.0 / Phase 2。
-
-### v0.2.0 — 功能完善
-
-- `download keyword / ranking / illust / bookmark`
-- `config show / set`
-- tags.json 保存
-- 彩色进度条（速度、ETA）
-
-> 现状注记（2026-06-20）：`download illust / keyword / ranking / bookmark`、`config show / set` 的 Phase 2 约束、`tags.json`、`.part` 恢复语义、速度与 ETA 统计 seam 已完成。当前实现采用“setup 保存 `userId` 认证元数据”的方案，bookmark 不再是 deferred/blocked。
-
-### v0.3.0 — 体验打磨
-
-- Homebrew formula 提交
-- Scoop bucket 创建
-- 错误信息中文化完善
-- 项目文档（中文 README）
-
-> 现状注记（2026-06-21）：本轮 UX 优化主链已完成并通过 `cargo fmt --check`、`cargo check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets`。当前产品合同已更新为：setup/config 对凭据与配置全可见、五类模式 root 已分离、批量模式按作品目录组织、请求层具备 429 收敛与统一重试策略、失败项持久化为 manifest 并支持 `picals-crawler retry <manifest-path>` 回放。
-
-### v1.0.0 — 正式发布
-
-- 全功能稳定
-- Ugoira 支持
-- 文件名模板
-- crates.io 发布
+历史路线图与交互样例已移动到附录：[[Picals Crawler 产品设计附录：交互与路线图]]

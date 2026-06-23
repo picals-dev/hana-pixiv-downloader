@@ -1,10 +1,10 @@
 ---
 title: "Picals Crawler 项目理解基线"
-tags: ["project", "baseline", "architecture", "product", "rust"]
+tags: ["project", "baseline", "architecture", "rust"]
 created: 2026-06-17T03:17:25.240Z
-updated: 2026-06-22T15:47:42.000Z
+updated: 2026-06-23T09:13:17.000Z
 sources: []
-links: ["typescript-原项目实现观察.md"]
+links: ["typescript-原项目实现观察.md", "picals-crawler-测试架构升级实现记录-2026-06-23.md", "picals-crawler-ux-优化执行记录-2026-06-21.md", "picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md"]
 category: architecture
 confidence: medium
 schemaVersion: 1
@@ -45,7 +45,13 @@ schemaVersion: 1
   - `probe -> crawl -> download -> auto-replay` 已证明复用同一 `Arc<PixivNetSession>`；独立 `retry` 走同一 net stack 但新建实例
   - `collector` 概念已移除，Pixiv 响应解析与 URL 语义已归入 `src/pixiv/{selector,url}.rs`
   - 失败项已升级为结构化 manifest，并支持 `picals-crawler retry <manifest-path>` 回放
-  - 测试隔离已统一收口到 `src/test_support.rs`
+  - 测试架构已升级为四层 SSOT：
+    - Layer 1：单元测试继续留在 `src` 邻近位置
+    - Layer 2：`tests/contracts.rs`
+    - Layer 3：`tests/app.rs`
+    - Layer 4：`tests/cli.rs`
+    - opt-in live：`tests/live.rs`
+  - `src/test_support.rs` 仅保留最小 shared support；`current_session_observer` 已迁入 `src/net/test_hook.rs`
 - 当前仓库的主要工作重心已从“实现 UX 优化”切换到“整理文档、准备后续发布与体验打磨”。
 
 ## 当前阶段判断
@@ -53,6 +59,7 @@ schemaVersion: 1
 - **Phase 1**：已完成。
 - **Phase 2**：已完成。
 - **本轮 UX 优化**：已完成，并通过 `cargo fmt --check / cargo check / cargo clippy --all-targets -- -D warnings / cargo test --all-targets`。
+- **测试架构升级**：已完成，并已固定四层测试入口、黑盒 CLI harness 与 live test 门控。
 - **后续起点**：
   - 可以开始 README、安装分发、发布准备与后续体验打磨。
 
@@ -60,7 +67,10 @@ schemaVersion: 1
 
 - 需继续保持产品/技术文档中的“明文凭据可见性属于冻结产品合同”这一事实一致，避免后续按默认安全偏好回滚。
 - 当前 replay / manifest 结构已经稳定，但若后续要继续抽边界，应在不破坏现有 CLI 合同的前提下进行。
+- 测试架构现在已有明确 SSOT；后续新增测试不应再恢复 `tests/*_test.rs` 顶层散文件模式。
 
 ## 关联页面
 
 - 参考 [[typescript-原项目实现观察]]
+- 测试架构迁移记录见 [[Picals Crawler 测试架构升级实现记录 2026-06-23]]
+- 下载预览研究附录见 [[Picals Crawler 下载预览与 Ranking 调研附录：实验与竞品]]

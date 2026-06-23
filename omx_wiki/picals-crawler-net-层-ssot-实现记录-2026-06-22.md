@@ -1,6 +1,6 @@
 ---
 title: "Picals Crawler net 层 SSOT 实现记录 2026-06-22"
-tags: ["session-log", "net", "pixiv", "architecture", "retry"]
+tags: ["session-log", "net", "retry"]
 created: 2026-06-22T15:47:42.000Z
 updated: 2026-06-22T15:47:42.000Z
 sources: []

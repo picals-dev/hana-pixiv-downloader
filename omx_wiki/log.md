@@ -1,5 +1,13 @@
 # Wiki Log
 
+## [2026-06-23T10:00:00.000Z] add
+- **Pages:** picals-crawler-测试指南.md, index.md
+- **Summary:** Added testing guide as the repository test SSOT and updated AGENTS routing expectations
+
+## [2026-06-23T09:13:17.000Z] add
+- **Pages:** picals-crawler-技术设计文档.md, picals-crawler-项目理解基线.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, index.md
+- **Summary:** Synced wiki with completed four-layer test architecture migration, support boundary收口, black-box CLI harness, and new session log
+
 ## [2026-06-17T00:00:00.000Z] move
 - **Pages:** picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md
 - **Summary:** Moved NEA design documents into omx_wiki and normalized wiki metadata
@@ -54,3 +62,110 @@
 ## [2026-06-22T15:47:42.000Z] add
 - **Pages:** picals-crawler-技术设计文档.md, picals-crawler-项目理解基线.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-ux-优化执行记录-2026-06-21.md, index.md
 - **Summary:** Synced wiki with net 层 SSOT 实现、Pixiv 领域模块重组、共享 session 合同与新的实现记录页面
+## [2026-06-23T09:19:29.264Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:19:29.264Z] lint
+- **Pages:** picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 7 issues (2 orphan, 0 stale, 1 broken, 1 contradictions)
+
+## [2026-06-23T09:19:53.258Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:19:53.419Z] lint
+- **Pages:** picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 7 issues (2 orphan, 0 stale, 1 broken, 1 contradictions)
+
+## [2026-06-23T09:20:12.463Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:20:12.624Z] lint
+- **Pages:** picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 7 issues (2 orphan, 0 stale, 1 broken, 1 contradictions)
+
+## [2026-06-23T09:20:31.108Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:20:31.257Z] lint
+- **Pages:** picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 6 issues (1 orphan, 0 stale, 1 broken, 1 contradictions)
+
+## [2026-06-23T09:23:10.492Z] lint
+- **Pages:** picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 6 issues (1 orphan, 0 stale, 1 broken, 1 contradictions)
+
+## [2026-06-23T09:35:28.602Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:35:28.751Z] lint
+- **Pages:** picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-技术设计文档.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 3 issues (1 orphan, 0 stale, 0 broken, 1 contradictions)
+
+## [2026-06-23T09:36:52.581Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:36:52.742Z] lint
+- **Pages:** picals-crawler-技术设计文档.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 2 issues (0 orphan, 0 stale, 0 broken, 1 contradictions)
+
+## [2026-06-23T09:37:53.241Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:37:53.399Z] lint
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 1 issues (0 orphan, 0 stale, 0 broken, 1 contradictions)
+
+## [2026-06-23T09:38:15.784Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:38:15.974Z] lint
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 1 issues (0 orphan, 0 stale, 0 broken, 1 contradictions)
+
+## [2026-06-23T09:38:41.782Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:38:41.952Z] lint
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 1 issues (0 orphan, 0 stale, 0 broken, 1 contradictions)
+
+## [2026-06-23T09:39:51.191Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:39:51.362Z] lint
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 1 issues (0 orphan, 0 stale, 0 broken, 1 contradictions)
+
+## [2026-06-23T09:40:38.803Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:40:38.991Z] lint
+- **Pages:** none
+- **Summary:** Lint: 0 issues (0 orphan, 0 stale, 0 broken, 0 contradictions)
+## [2026-06-23T09:55:03.569Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试指南.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:55:03.734Z] lint
+- **Pages:** picals-crawler-测试指南.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 2 issues (1 orphan, 0 stale, 0 broken, 1 contradictions)
+
+## [2026-06-23T09:55:45.684Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试指南.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-23T09:55:45.894Z] lint
+- **Pages:** none
+- **Summary:** Lint: 0 issues (0 orphan, 0 stale, 0 broken, 0 contradictions)
+
