@@ -116,7 +116,7 @@ pub fn create_shared_session(
 pub fn print_download_summary(target_directory: &Path, result: &DownloadResult) {
     println!("下载目录: {}", target_directory.display());
     println!(
-        "下载完成：总数 {}，成功 {}，跳过 {}，失败 {}",
+        "下载完成：图片总数 {}，成功 {}，跳过 {}，失败 {}",
         result.total, result.downloaded, result.skipped, result.failed
     );
 }

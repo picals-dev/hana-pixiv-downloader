@@ -3,6 +3,7 @@
 pub mod image;
 
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -58,19 +59,22 @@ impl Downloader {
 
         fs::create_dir_all(&self.directory)?;
 
-        let progress = DownloadProgress::new(items.len() as u64);
-        progress.set_message(format!("下载目录 {}", self.directory.display()));
+        let progress =
+            DownloadProgress::new(items.len() as u64, build_illust_progress_totals(items));
 
         let outcomes = stream::iter(items.iter().cloned().map(|item| {
             let downloader = self.clone();
             let progress = progress.clone();
 
             async move {
+                let illust_id = item.illust_id.clone();
                 let outcome = downloader.download_one(item).await;
-                progress.inc(1);
-                if let DownloadOutcome::Downloaded(bytes) = outcome {
-                    progress.record_downloaded_bytes(bytes);
-                }
+                let (bytes, failed) = match &outcome {
+                    DownloadOutcome::Downloaded(bytes) => (*bytes, false),
+                    DownloadOutcome::Skipped => (0, false),
+                    DownloadOutcome::Failed(_) => (0, true),
+                };
+                progress.record_unit_completion(&illust_id, bytes, failed);
                 outcome
             }
         }))
@@ -155,6 +159,47 @@ enum DownloadOutcome {
     Failed(FailureRecord),
 }
 
+fn build_illust_progress_totals(items: &[DownloadItem]) -> Vec<(String, u64)> {
+    let mut totals = BTreeMap::<String, u64>::new();
+    for item in items {
+        *totals.entry(item.illust_id.clone()).or_default() += 1;
+    }
+    totals.into_iter().collect()
+}
+
 fn file_exists_and_nonempty(path: &Path) -> bool {
     fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::downloader::{build_illust_progress_totals, image::DownloadItem};
+
+    #[test]
+    fn illust_progress_totals_are_grouped_by_illust() {
+        let items = vec![
+            DownloadItem {
+                illust_id: "200".to_string(),
+                image_url: "https://i.pximg.net/200_p0.png".to_string(),
+                target_dir: PathBuf::from("/tmp/200"),
+            },
+            DownloadItem {
+                illust_id: "100".to_string(),
+                image_url: "https://i.pximg.net/100_p0.png".to_string(),
+                target_dir: PathBuf::from("/tmp/100"),
+            },
+            DownloadItem {
+                illust_id: "200".to_string(),
+                image_url: "https://i.pximg.net/200_p1.png".to_string(),
+                target_dir: PathBuf::from("/tmp/200"),
+            },
+        ];
+
+        assert_eq!(
+            build_illust_progress_totals(&items),
+            vec![("100".to_string(), 1), ("200".to_string(), 2)]
+        );
+    }
 }
