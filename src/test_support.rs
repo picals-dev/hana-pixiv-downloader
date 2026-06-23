@@ -1,14 +1,15 @@
 //! 测试期共享的环境变量隔离工具。
+//!
+//! 这是专供 crate 内单元测试与仓库内 integration tests 使用的辅助 API，
+//! 不承诺对外部依赖方提供稳定兼容性。
 
 use std::path::Path;
-use std::sync::{LazyLock, Mutex as StdMutex};
+use std::sync::LazyLock;
 
 use crate::net::SessionObserver;
 use tokio::sync::{Mutex, MutexGuard};
 
 static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static SESSION_OBSERVER: LazyLock<StdMutex<Option<SessionObserver>>> =
-    LazyLock::new(|| StdMutex::new(None));
 
 pub struct EnvVarGuard {
     key: &'static str,
@@ -63,22 +64,8 @@ pub fn set_config_home(home: &Path) -> ConfigHomeGuard {
     }
 }
 
-pub struct SessionObserverGuard {
-    previous: Option<SessionObserver>,
-}
-
-impl Drop for SessionObserverGuard {
-    fn drop(&mut self) {
-        *SESSION_OBSERVER.lock().unwrap() = self.previous.take();
-    }
-}
+pub use crate::net::test_hook::SessionObserverGuard;
 
 pub fn install_session_observer(observer: SessionObserver) -> SessionObserverGuard {
-    let mut slot = SESSION_OBSERVER.lock().unwrap();
-    let previous = slot.replace(observer);
-    SessionObserverGuard { previous }
-}
-
-pub fn current_session_observer() -> Option<SessionObserver> {
-    SESSION_OBSERVER.lock().unwrap().clone()
+    crate::net::test_hook::install_session_observer(observer)
 }

@@ -15,6 +15,7 @@ pub mod net;
 pub mod output;
 pub mod pixiv;
 pub mod replay;
+#[doc(hidden)]
 pub mod test_support;
 pub mod utils;
 

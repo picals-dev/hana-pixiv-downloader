@@ -1,6 +1,3 @@
-#[path = "support/mod.rs"]
-mod common;
-
 use std::{fs, path::PathBuf, sync::Arc};
 
 use picals_crawler::{
@@ -15,9 +12,6 @@ use picals_crawler::{
     },
     error::CrawlerError,
     net::PixivNetSession,
-    pixiv::selector::{
-        count_user_illust_ids, select_bookmark_total, select_keyword_total, select_ranking_total,
-    },
 };
 use tempfile::tempdir;
 use url::Url;
@@ -26,10 +20,7 @@ use wiremock::{
     matchers::{header, method, path},
 };
 
-#[allow(dead_code)]
-fn _keep_text_fixture_helper_linked() {
-    let _ = common::read_text_fixture as fn(&str) -> String;
-}
+use crate::support::fixtures::read_fixture;
 
 fn options(directory: PathBuf) -> ResolvedDownloadOptions {
     let defaults = DownloadConfig::default();
@@ -76,7 +67,7 @@ async fn user_crawler_can_download_images_with_mock_server() {
             format!("{}/users/12345678/illustrations", server.uri()),
         ))
         .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::read_fixture("user_profile_all.json")),
+            ResponseTemplate::new(200).set_body_json(read_fixture("user_profile_all.json")),
         )
         .mount(&server)
         .await;
@@ -270,9 +261,7 @@ async fn user_crawler_exports_tags_json_when_enabled() {
 
     Mock::given(method("GET"))
         .and(path("/ajax/illust/123456"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::read_fixture("illust_detail.json")),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("illust_detail.json")))
         .mount(&server)
         .await;
 
@@ -422,9 +411,7 @@ async fn keyword_crawler_can_download_search_results() {
         .and(path(
             "/ajax/search/artworks/%E5%88%9D%E9%9F%B3%E3%83%9F%E3%82%AF",
         ))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::read_fixture("keyword_search.json")),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("keyword_search.json")))
         .mount(&server)
         .await;
 
@@ -476,9 +463,7 @@ async fn ranking_crawler_can_download_ranked_results() {
 
     Mock::given(method("GET"))
         .and(path("/ranking.php"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::read_fixture("ranking.json")),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("ranking.json")))
         .mount(&server)
         .await;
 
@@ -533,9 +518,7 @@ async fn bookmark_crawler_can_download_bookmarks() {
             "referer",
             format!("{}/bookmark.php?type=user", server.uri()),
         ))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::read_fixture("bookmark.json")),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("bookmark.json")))
         .mount(&server)
         .await;
 
@@ -595,9 +578,7 @@ async fn bookmark_crawler_truncates_to_requested_count() {
 
     Mock::given(method("GET"))
         .and(path("/ajax/user/12345678/illusts/bookmarks"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::read_fixture("bookmark.json")),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("bookmark.json")))
         .mount(&server)
         .await;
 
@@ -658,9 +639,7 @@ async fn bookmark_crawler_exports_tags_json_when_enabled() {
 
     Mock::given(method("GET"))
         .and(path("/ajax/user/12345678/illusts/bookmarks"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(common::read_fixture("bookmark.json")),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("bookmark.json")))
         .mount(&server)
         .await;
 
@@ -681,8 +660,7 @@ async fn bookmark_crawler_exports_tags_json_when_enabled() {
         Mock::given(method("GET"))
             .and(path(format!("/ajax/illust/{illust_id}")))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(common::read_fixture("illust_detail.json")),
+                ResponseTemplate::new(200).set_body_json(read_fixture("illust_detail.json")),
             )
             .mount(&server)
             .await;
@@ -836,47 +814,4 @@ fn missing_credential_error_keeps_chinese_message() {
 fn missing_user_id_error_keeps_chinese_message() {
     let error = CrawlerError::MissingUserId;
     assert!(error.to_string().contains("缺少 userId"));
-}
-
-#[test]
-fn selector_can_count_user_illust_ids() {
-    let value = common::read_fixture("user_profile_all.json");
-    assert_eq!(count_user_illust_ids(&value).unwrap(), 3);
-}
-
-#[test]
-fn selector_can_read_keyword_total() {
-    let value = serde_json::json!({
-        "error": false,
-        "body": {
-            "illustManga": {
-                "total": 476042,
-                "data": [{ "id": "1" }]
-            }
-        }
-    });
-    assert_eq!(select_keyword_total(&value).unwrap(), 476042);
-}
-
-#[test]
-fn selector_can_read_bookmark_total() {
-    let value = serde_json::json!({
-        "error": false,
-        "body": {
-            "total": 3134,
-            "works": [{ "id": "1" }]
-        }
-    });
-    assert_eq!(select_bookmark_total(&value).unwrap(), 3134);
-}
-
-#[test]
-fn selector_can_read_ranking_total() {
-    let value = serde_json::json!({
-        "contents": [{ "illust_id": "1" }],
-        "rank_total": 500,
-        "page": 1,
-        "next": 2
-    });
-    assert_eq!(select_ranking_total(&value).unwrap(), 500);
 }

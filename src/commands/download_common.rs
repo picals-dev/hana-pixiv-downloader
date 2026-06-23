@@ -14,13 +14,12 @@ use crate::{
     downloader::DownloadResult,
     error::{AppResult, CrawlerError},
     failure::{FailureManifest, ReplayCommand, ReplayOptions},
-    net::{PixivNetSession, resolve_base_url},
+    net::{PixivNetSession, resolve_base_url, test_hook::attach_session_observer},
     output::{OutputLayout, resolve_output_layout},
     pixiv::selector::{
         count_user_illust_ids, select_bookmark_total, select_keyword_total, select_ranking_total,
     },
     replay::{ReplayExecutionReport, replay_failures_with_session},
-    test_support::current_session_observer,
 };
 
 pub const RANKING_SORT_ERROR: &str = "download ranking 不支持自定义排序；仅允许默认值 date_desc";
@@ -106,10 +105,11 @@ pub fn create_shared_session(
     credential: &Credential,
 ) -> AppResult<Arc<PixivNetSession>> {
     let base_url = resolve_base_url(None)?;
-    let mut builder = PixivNetSession::builder(options.clone(), credential.clone(), base_url);
-    if let Some(observer) = current_session_observer() {
-        builder = builder.with_observer(observer);
-    }
+    let builder = attach_session_observer(PixivNetSession::builder(
+        options.clone(),
+        credential.clone(),
+        base_url,
+    ));
     Ok(Arc::new(builder.build()?))
 }
 

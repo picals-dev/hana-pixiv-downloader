@@ -7,10 +7,9 @@ use crate::{
     downloader::image::DownloadItem,
     error::AppResult,
     failure::{FailureRecord, FailureStage, ReplayCommand},
-    net::{PixivNetSession, resolve_base_url},
+    net::{PixivNetSession, resolve_base_url, test_hook::attach_session_observer},
     output::resolve_output_layout,
     pixiv::selector::select_page_original_urls,
-    test_support::current_session_observer,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -28,10 +27,11 @@ pub async fn replay_failures(
 ) -> AppResult<ReplayExecutionReport> {
     let options = command.options().to_resolved(command.mode());
     let base_url = resolve_base_url(None)?;
-    let mut builder = PixivNetSession::builder(options.clone(), credential.clone(), base_url);
-    if let Some(observer) = current_session_observer() {
-        builder = builder.with_observer(observer);
-    }
+    let builder = attach_session_observer(PixivNetSession::builder(
+        options.clone(),
+        credential.clone(),
+        base_url,
+    ));
     let session = Arc::new(builder.build()?);
     replay_failures_with_session(session, command, records).await
 }

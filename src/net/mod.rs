@@ -6,6 +6,7 @@ mod event;
 mod policy;
 mod session;
 mod state;
+pub(crate) mod test_hook;
 mod transfer;
 
 pub use catalog::{CurrentUserPage, HostKind, RequestKind};

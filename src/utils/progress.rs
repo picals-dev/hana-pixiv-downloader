@@ -9,7 +9,7 @@ use std::{
 use indicatif::{ProgressBar, ProgressStyle};
 
 const PROGRESS_BAR_TEMPLATE: &str =
-    "[{elapsed_precise}] {bar:40.cyan/blue} 总图片 {pos}/{len} | {msg}";
+    "[{elapsed_precise}] {bar:40.cyan/blue} 总图片 | {pos}/{len} | {msg}";
 
 #[derive(Clone)]
 pub struct DownloadProgress {

@@ -3,20 +3,23 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 use picals_crawler::{
     auth::Credential,
-    cli::{Cli, Command, download::DownloadSubcommand},
+    cli::Cli,
     commands,
     config::{Config, DownloadConfig, POPULAR_SORT_MIGRATION_MESSAGE, ProxyConfig, SortOrder},
     failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
     net::NetEvent,
-    test_support::{EnvVarGuard, install_session_observer, lock_env, set_config_home},
 };
 use tempfile::tempdir;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{header, method, path},
+};
+
+use crate::support::env::{
+    EnvVarGuard, install_observer, lock_env, set_base_url, set_config_home, unset_download_env,
 };
 
 fn observed_session_ids(events: &[NetEvent]) -> BTreeSet<u64> {
@@ -32,73 +35,12 @@ fn observed_session_ids(events: &[NetEvent]) -> BTreeSet<u64> {
         .collect()
 }
 
-#[test]
-fn ranking_help_does_not_expose_sort_r18_or_no_ai() {
-    let mut command = Cli::command();
-    let rendered = command.render_long_help().to_string();
-    assert!(rendered.contains("download"));
-
-    let mut ranking = Cli::command()
-        .find_subcommand_mut("download")
-        .unwrap()
-        .find_subcommand_mut("ranking")
-        .unwrap()
-        .clone();
-    let help = ranking.render_long_help().to_string();
-
-    assert!(!help.contains("--sort"));
-    assert!(!help.contains("--r18"));
-    assert!(!help.contains("--no-ai"));
-}
-
-#[test]
-fn ranking_cli_rejects_sort_flag_at_parse_time() {
-    let error = Cli::try_parse_from([
-        "picals-crawler",
-        "download",
-        "ranking",
-        "--sort",
-        "date_desc",
-    ])
-    .unwrap_err();
-
-    assert!(error.to_string().contains("--sort"));
-}
-
-#[test]
-fn ranking_cli_accepts_positional_mode() {
-    let cli = Cli::parse_from(["picals-crawler", "download", "ranking", "daily"]);
-
-    match cli.command {
-        picals_crawler::cli::Command::Download(download) => match download.target {
-            Some(DownloadSubcommand::Ranking(args)) => {
-                assert_eq!(
-                    args.mode,
-                    Some(picals_crawler::cli::download::RankingMode::Daily)
-                );
-            }
-            _ => panic!("expected ranking command"),
-        },
-        _ => panic!("expected download command"),
-    }
-}
-
-#[test]
-fn ranking_cli_rejects_legacy_mode_flag() {
-    let error = Cli::try_parse_from(["picals-crawler", "download", "ranking", "--mode", "daily"])
-        .unwrap_err();
-
-    assert!(error.to_string().contains("--mode"));
-}
-
 #[tokio::test]
 async fn ranking_rejects_non_default_values_from_config() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
     let _config_home = set_config_home(temp.path());
-    let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
-    let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
-    let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
+    let _download_env = unset_download_env();
 
     Config {
         download: DownloadConfig {
@@ -120,8 +62,7 @@ async fn ranking_rejects_ai_false_from_env() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
     let _config_home = set_config_home(temp.path());
-    let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
-    let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
+    let _download_env = unset_download_env();
     let _ai = EnvVarGuard::set("PICALS_DOWNLOAD_AI", "false");
 
     let cli = Cli::parse_from(["picals-crawler", "download", "ranking", "--dry-run"]);
@@ -134,9 +75,7 @@ async fn bookmark_requires_user_id_in_credential() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
     let _config_home = set_config_home(temp.path());
-    let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
-    let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
-    let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
+    let _download_env = unset_download_env();
     Credential::new("cookie").unwrap().save().unwrap();
 
     let cli = Cli::parse_from(["picals-crawler", "download", "bookmark"]);
@@ -150,10 +89,8 @@ async fn bookmark_dry_run_accepts_credential_with_user_id() {
     let temp = tempdir().unwrap();
     let server = MockServer::start().await;
     let _config_home = set_config_home(temp.path());
-    let _base_url = EnvVarGuard::set("PICALS_PIXIV_BASE_URL", server.uri());
-    let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
-    let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
-    let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
+    let _base_url = set_base_url(&server.uri());
+    let _download_env = unset_download_env();
     Credential::new_with_user_id("cookie", Some("12345678"))
         .unwrap()
         .save()
@@ -180,86 +117,12 @@ async fn env_popular_sort_returns_migration_error() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
     let _config_home = set_config_home(temp.path());
-    let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
-    let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
+    let _download_env = unset_download_env();
     let _sort = EnvVarGuard::set("PICALS_DOWNLOAD_SORT", "popular_desc");
 
     let cli = Cli::parse_from(["picals-crawler", "download", "illust", "123"]);
     let error = commands::dispatch(cli).await.unwrap_err();
     assert!(format!("{error:#}").contains(POPULAR_SORT_MIGRATION_MESSAGE));
-}
-
-#[test]
-fn keyword_cli_still_uses_query_and_r18_only() {
-    let cli = Cli::parse_from(["picals-crawler", "download", "keyword", "初音ミク", "--r18"]);
-
-    match cli.command {
-        picals_crawler::cli::Command::Download(download) => match download.target {
-            Some(DownloadSubcommand::Keyword(args)) => {
-                assert_eq!(args.query, "初音ミク");
-                assert!(args.r18);
-            }
-            _ => panic!("expected keyword command"),
-        },
-        _ => panic!("expected download command"),
-    }
-}
-
-#[test]
-fn direct_download_cli_accepts_pixiv_url() {
-    let cli = Cli::parse_from([
-        "picals-crawler",
-        "download",
-        "https://www.pixiv.net/users/12345678",
-        "--dry-run",
-    ]);
-
-    match cli.command {
-        picals_crawler::cli::Command::Download(download) => {
-            assert!(download.target.is_none());
-            assert_eq!(
-                download.direct.pixiv_url.as_deref(),
-                Some("https://www.pixiv.net/users/12345678")
-            );
-            assert!(download.direct.common.dry_run);
-        }
-        _ => panic!("expected download command"),
-    }
-}
-
-#[test]
-fn direct_download_cli_accepts_encoded_tag_url() {
-    let cli = Cli::parse_from([
-        "picals-crawler",
-        "download",
-        "https://www.pixiv.net/tags/%E5%88%9D%E9%9F%B3%E3%83%9F%E3%82%AF/artworks",
-    ]);
-
-    match cli.command {
-        picals_crawler::cli::Command::Download(download) => {
-            assert!(download.target.is_none());
-            assert_eq!(
-                download.direct.pixiv_url.as_deref(),
-                Some("https://www.pixiv.net/tags/%E5%88%9D%E9%9F%B3%E3%83%9F%E3%82%AF/artworks")
-            );
-        }
-        _ => panic!("expected download command"),
-    }
-}
-
-#[test]
-fn retry_cli_accepts_manifest_path() {
-    let cli = Cli::parse_from(["picals-crawler", "retry", "/tmp/failures/demo.json"]);
-
-    match cli.command {
-        Command::Retry(args) => {
-            assert_eq!(
-                args.manifest_path,
-                std::path::PathBuf::from("/tmp/failures/demo.json")
-            );
-        }
-        _ => panic!("expected retry command"),
-    }
 }
 
 #[tokio::test]
@@ -379,7 +242,7 @@ async fn retry_command_can_recover_retryable_download_record() {
     )
     .unwrap();
 
-    let _base_url = EnvVarGuard::set("PICALS_PIXIV_BASE_URL", server.uri());
+    let _base_url = set_base_url(&server.uri());
     let cli = Cli::parse_from([
         "picals-crawler",
         "retry",
@@ -400,10 +263,8 @@ async fn auto_replay_reuses_same_session_instance_for_single_download_command() 
     let temp = tempdir().unwrap();
     let server = MockServer::start().await;
     let _config_home = set_config_home(temp.path());
-    let _base_url = EnvVarGuard::set("PICALS_PIXIV_BASE_URL", server.uri());
-    let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
-    let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
-    let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
+    let _base_url = set_base_url(&server.uri());
+    let _download_env = unset_download_env();
     Credential::new("cookie").unwrap().save().unwrap();
 
     Mock::given(method("GET"))
@@ -451,7 +312,7 @@ async fn auto_replay_reuses_same_session_instance_for_single_download_command() 
 
     let events = Arc::new(Mutex::new(Vec::<NetEvent>::new()));
     let observer_events = Arc::clone(&events);
-    let _observer = install_session_observer(Arc::new(move |event| {
+    let _observer = install_observer(Arc::new(move |event| {
         observer_events.lock().unwrap().push(event);
     }));
 
@@ -484,10 +345,8 @@ async fn standalone_retry_uses_new_session_instance_but_same_net_stack() {
     let temp = tempdir().unwrap();
     let server = MockServer::start().await;
     let _config_home = set_config_home(temp.path());
-    let _base_url = EnvVarGuard::set("PICALS_PIXIV_BASE_URL", server.uri());
-    let _sort = EnvVarGuard::unset("PICALS_DOWNLOAD_SORT");
-    let _ai = EnvVarGuard::unset("PICALS_DOWNLOAD_AI");
-    let _r18 = EnvVarGuard::unset("PICALS_DOWNLOAD_R18");
+    let _base_url = set_base_url(&server.uri());
+    let _download_env = unset_download_env();
     Credential::new("cookie").unwrap().save().unwrap();
 
     Mock::given(method("GET"))
@@ -523,7 +382,7 @@ async fn standalone_retry_uses_new_session_instance_but_same_net_stack() {
 
     let command_events = Arc::new(Mutex::new(Vec::<NetEvent>::new()));
     let command_observer_events = Arc::clone(&command_events);
-    let _command_observer = install_session_observer(Arc::new(move |event| {
+    let _command_observer = install_observer(Arc::new(move |event| {
         command_observer_events.lock().unwrap().push(event);
     }));
 
@@ -587,7 +446,7 @@ async fn standalone_retry_uses_new_session_instance_but_same_net_stack() {
 
     let retry_events = Arc::new(Mutex::new(Vec::<NetEvent>::new()));
     let retry_observer_events = Arc::clone(&retry_events);
-    let _retry_observer = install_session_observer(Arc::new(move |event| {
+    let _retry_observer = install_observer(Arc::new(move |event| {
         retry_observer_events.lock().unwrap().push(event);
     }));
 
