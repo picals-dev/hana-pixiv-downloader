@@ -30,6 +30,7 @@ fn observed_session_ids(events: &[NetEvent]) -> BTreeSet<u64> {
             | NetEvent::Retry { session_id, .. }
             | NetEvent::Failure { session_id, .. }
             | NetEvent::Cooldown { session_id, .. }
+            | NetEvent::TransferProgress { session_id, .. }
             | NetEvent::TransferCompleted { session_id, .. } => *session_id,
         })
         .collect()

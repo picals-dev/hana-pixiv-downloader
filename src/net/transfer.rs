@@ -1,6 +1,9 @@
 //! 图片流式写盘。
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use futures::StreamExt;
 use tokio::{fs, io::AsyncWriteExt};
@@ -9,9 +12,12 @@ use crate::error::{AppResult, CrawlerError};
 
 use super::catalog::{ensure_content_length, ensure_non_empty_body};
 
+pub type TransferChunkObserver = dyn Fn(u64) + Send + Sync;
+
 pub async fn stream_response_to_temp_file(
     response: reqwest::Response,
     target_path: &Path,
+    on_chunk: Option<Arc<TransferChunkObserver>>,
 ) -> AppResult<u64> {
     let content_length = response.content_length();
     let temp_path = temporary_download_path(target_path);
@@ -28,8 +34,12 @@ pub async fn stream_response_to_temp_file(
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
-            written += chunk.len() as u64;
+            let chunk_len = chunk.len() as u64;
+            written += chunk_len;
             file.write_all(&chunk).await?;
+            if let Some(observer) = &on_chunk {
+                observer(chunk_len);
+            }
         }
         file.flush().await?;
         drop(file);

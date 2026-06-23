@@ -32,7 +32,9 @@ use super::{
     client::NetClients,
     policy::{retry_delay_for_error, retry_delay_for_status},
     state::SharedState,
-    transfer::{ensure_file_exists_and_nonempty, stream_response_to_temp_file},
+    transfer::{
+        TransferChunkObserver, ensure_file_exists_and_nonempty, stream_response_to_temp_file,
+    },
 };
 
 const BASE_URL_ENV_KEY: &str = "PICALS_PIXIV_BASE_URL";
@@ -231,16 +233,53 @@ impl PixivNetSession {
         illust_id: &str,
         target_path: &Path,
     ) -> AppResult<u64> {
+        self.download_original_image_with_progress(image_url, illust_id, target_path, None)
+            .await
+    }
+
+    pub(crate) async fn download_original_image_with_progress(
+        &self,
+        image_url: &str,
+        illust_id: &str,
+        target_path: &Path,
+        on_chunk: Option<Arc<TransferChunkObserver>>,
+    ) -> AppResult<u64> {
         let spec = self.catalog.image_download(image_url, illust_id)?;
         if ensure_file_exists_and_nonempty(target_path)? {
             return Ok(0);
         }
 
         let target_string = target_path.display().to_string();
+        let session_id = self.session_id;
         let bytes = self
             .execute(spec, |response| {
                 let target_path = target_path.to_path_buf();
-                async move { stream_response_to_temp_file(response, &target_path).await }
+                let target_string = target_string.clone();
+                let on_chunk = on_chunk.clone();
+                let observer = self.hooks.observer.clone();
+                async move {
+                    let chunk_observer = if on_chunk.is_some() || observer.is_some() {
+                        let target_string = target_string.clone();
+                        let on_chunk = on_chunk.clone();
+                        let observer = observer.clone();
+                        Some(Arc::new(move |bytes| {
+                            if let Some(on_chunk) = &on_chunk {
+                                on_chunk(bytes);
+                            }
+                            if let Some(observer) = &observer {
+                                observer(NetEvent::TransferProgress {
+                                    session_id,
+                                    bytes,
+                                    target_path: target_string.clone(),
+                                });
+                            }
+                        }) as Arc<TransferChunkObserver>)
+                    } else {
+                        None
+                    };
+
+                    stream_response_to_temp_file(response, &target_path, chunk_observer).await
+                }
             })
             .await?;
         self.emit(NetEvent::TransferCompleted {
@@ -680,11 +719,17 @@ mod tests {
     #[tokio::test]
     async fn image_download_does_not_send_cookie_header() {
         let server = MockServer::start().await;
-        let session = PixivNetSession::new_with_base_url(
+        let events = Arc::new(Mutex::new(Vec::<NetEvent>::new()));
+        let observer_events = Arc::clone(&events);
+        let session = PixivNetSession::builder(
             options(5, 2),
             Credential::new("cookie").unwrap(),
             server.uri().parse().unwrap(),
         )
+        .with_observer(Arc::new(move |event| {
+            observer_events.lock().unwrap().push(event);
+        }))
+        .build()
         .unwrap();
         let temp = tempfile::tempdir().unwrap();
         let target_path = temp.path().join("123456_p0.png");
@@ -709,6 +754,15 @@ mod tests {
             .unwrap();
 
         assert!(target_path.exists());
+        let observed = events.lock().unwrap();
+        assert!(observed.iter().any(|event| matches!(
+            event,
+            NetEvent::TransferProgress { bytes, .. } if *bytes > 0
+        )));
+        assert!(observed.iter().any(|event| matches!(
+            event,
+            NetEvent::TransferCompleted { bytes, .. } if *bytes > 0
+        )));
     }
 
     #[tokio::test]

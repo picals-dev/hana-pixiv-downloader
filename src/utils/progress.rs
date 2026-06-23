@@ -2,25 +2,34 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
-    time::Instant,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
+    time::{Duration, Instant},
 };
 
 use indicatif::{ProgressBar, ProgressStyle};
 
 const PROGRESS_BAR_TEMPLATE: &str =
-    "[{elapsed_precise}] {bar:40.cyan/blue} 总图片 | {pos}/{len} | {msg}";
+    "[{elapsed_precise}] {bar:40.cyan/blue} 总图片 {pos}/{len} | {msg}";
+const PROGRESS_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
 pub struct DownloadProgress {
     bar: ProgressBar,
     state: Arc<Mutex<ProgressState>>,
+    stop_refresh: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
 struct ProgressState {
     start: Instant,
     downloaded_bytes: u64,
+    pending_window_bytes: u64,
+    bytes_per_second: u64,
+    last_speed_sample_at: Instant,
     total_units: u64,
     illusts: HashMap<String, IllustProgressState>,
     total_illusts: u64,
@@ -57,31 +66,41 @@ impl DownloadProgress {
         let state = ProgressState::new(total_units, illust_unit_totals);
         let initial_snapshot = ProgressSnapshot::from_state(&state, 0);
         bar.set_message(render_snapshot_message(initial_snapshot));
-
-        Self {
+        let progress = Self {
             bar,
             state: Arc::new(Mutex::new(state)),
-        }
+            stop_refresh: Arc::new(AtomicBool::new(false)),
+        };
+        progress.spawn_message_renderer();
+        progress
     }
 
     pub fn inc(&self, delta: u64) {
         self.bar.inc(delta);
     }
 
-    pub fn record_unit_completion(&self, illust_id: &str, bytes: u64, failed: bool) {
+    pub fn record_downloaded_bytes(&self, bytes: u64) {
+        if bytes == 0 {
+            return;
+        }
+
+        let mut state = self.state.lock().expect("progress state lock poisoned");
+        state.record_downloaded_bytes(bytes);
+    }
+
+    pub fn record_unit_completion(&self, illust_id: &str, failed: bool) {
         self.bar.inc(1);
         let snapshot = {
             let mut state = self.state.lock().expect("progress state lock poisoned");
-            state.downloaded_bytes += bytes;
             state.record_illust_progress(illust_id, failed);
-            ProgressSnapshot::from_state(&state, self.bar.position())
+            state.snapshot(self.bar.position(), Instant::now())
         };
         self.bar.set_message(render_snapshot_message(snapshot));
     }
 
     pub fn snapshot(&self) -> ProgressSnapshot {
-        let state = self.state.lock().expect("progress state lock poisoned");
-        ProgressSnapshot::from_state(&state, self.bar.position())
+        let mut state = self.state.lock().expect("progress state lock poisoned");
+        state.snapshot(self.bar.position(), Instant::now())
     }
 
     pub fn set_message(&self, message: impl Into<String>) {
@@ -89,12 +108,51 @@ impl DownloadProgress {
     }
 
     pub fn finish_with_message(&self, message: impl Into<String>) {
+        self.stop_refresh.store(true, Ordering::Relaxed);
         self.bar.finish_with_message(message.into());
+    }
+
+    fn spawn_message_renderer(&self) {
+        let bar = self.bar.clone();
+        let state = Arc::clone(&self.state);
+        let stop_refresh = Arc::clone(&self.stop_refresh);
+
+        thread::Builder::new()
+            .name("picals-progress".to_string())
+            .spawn(move || {
+                loop {
+                    if stop_refresh.load(Ordering::Relaxed) || Arc::strong_count(&state) == 1 {
+                        break;
+                    }
+
+                    thread::sleep(PROGRESS_REFRESH_INTERVAL);
+
+                    if stop_refresh.load(Ordering::Relaxed) || Arc::strong_count(&state) == 1 {
+                        break;
+                    }
+
+                    let snapshot = {
+                        let mut state = state.lock().expect("progress state lock poisoned");
+                        state.snapshot(bar.position(), Instant::now())
+                    };
+
+                    if stop_refresh.load(Ordering::Relaxed) {
+                        break;
+                    }
+
+                    bar.set_message(render_snapshot_message(snapshot));
+                }
+            })
+            .expect("进度刷新线程必须可以启动");
     }
 }
 
 impl ProgressState {
     fn new(total_units: u64, illust_unit_totals: Vec<(String, u64)>) -> Self {
+        Self::new_at(total_units, illust_unit_totals, Instant::now())
+    }
+
+    fn new_at(total_units: u64, illust_unit_totals: Vec<(String, u64)>, start: Instant) -> Self {
         let total_illusts = illust_unit_totals.len() as u64;
         let illusts = illust_unit_totals
             .into_iter()
@@ -112,8 +170,11 @@ impl ProgressState {
             .collect();
 
         Self {
-            start: Instant::now(),
+            start,
             downloaded_bytes: 0,
+            pending_window_bytes: 0,
+            bytes_per_second: 0,
+            last_speed_sample_at: start,
             total_units,
             illusts,
             total_illusts,
@@ -138,12 +199,33 @@ impl ProgressState {
             }
         }
     }
+
+    fn record_downloaded_bytes(&mut self, bytes: u64) {
+        self.downloaded_bytes += bytes;
+        self.pending_window_bytes += bytes;
+    }
+
+    fn snapshot(&mut self, completed_units: u64, now: Instant) -> ProgressSnapshot {
+        self.refresh_speed(now);
+        ProgressSnapshot::from_state(self, completed_units)
+    }
+
+    fn refresh_speed(&mut self, now: Instant) {
+        let elapsed = now.saturating_duration_since(self.last_speed_sample_at);
+        if elapsed < PROGRESS_REFRESH_INTERVAL {
+            return;
+        }
+
+        let elapsed_seconds = elapsed.as_secs_f64().max(0.001);
+        self.bytes_per_second = (self.pending_window_bytes as f64 / elapsed_seconds).round() as u64;
+        self.pending_window_bytes = 0;
+        self.last_speed_sample_at = now;
+    }
 }
 
 impl ProgressSnapshot {
     fn from_state(state: &ProgressState, completed_units: u64) -> Self {
         let elapsed_seconds = state.start.elapsed().as_secs_f64().max(0.001);
-        let bytes_per_second = (state.downloaded_bytes as f64 / elapsed_seconds).round() as u64;
         let eta_seconds = if completed_units > 0 && completed_units < state.total_units {
             let average_unit_seconds = elapsed_seconds / completed_units as f64;
             Some(
@@ -155,7 +237,7 @@ impl ProgressSnapshot {
 
         Self {
             downloaded_bytes: state.downloaded_bytes,
-            bytes_per_second,
+            bytes_per_second: state.bytes_per_second,
             eta_seconds,
             total_illusts: state.total_illusts,
             handled_illusts: state.handled_illusts,
@@ -177,7 +259,7 @@ fn render_snapshot_message(snapshot: ProgressSnapshot) -> String {
     }
 
     parts.push(format!(
-        "已下载 {} | 速度 {}/s",
+        "已传输 {} | 速度 {}/s",
         format_bytes(snapshot.downloaded_bytes),
         format_bytes(snapshot.bytes_per_second)
     ));
@@ -208,17 +290,31 @@ fn format_bytes(bytes: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::DownloadProgress;
+    use std::time::{Duration, Instant};
+
+    use super::{DownloadProgress, ProgressState, render_snapshot_message};
 
     #[test]
-    fn progress_snapshot_reports_speed_and_eta() {
-        let progress = DownloadProgress::new(4, vec![("123456".to_string(), 4)]);
-        progress.record_unit_completion("123456", 2048, false);
-        let snapshot = progress.snapshot();
+    fn progress_snapshot_reports_recent_speed_and_eta() {
+        let start = Instant::now();
+        let mut state = ProgressState::new_at(4, vec![("123456".to_string(), 4)], start);
+        state.record_downloaded_bytes(2048);
+        let snapshot = state.snapshot(1, start + Duration::from_secs(1));
 
         assert_eq!(snapshot.downloaded_bytes, 2048);
-        assert!(snapshot.bytes_per_second > 0);
+        assert_eq!(snapshot.bytes_per_second, 2048);
         assert!(snapshot.eta_seconds.is_some());
+    }
+
+    #[test]
+    fn progress_snapshot_resets_speed_after_idle_window() {
+        let start = Instant::now();
+        let mut state = ProgressState::new_at(4, vec![("123456".to_string(), 4)], start);
+        state.record_downloaded_bytes(2048);
+        let _ = state.snapshot(1, start + Duration::from_secs(1));
+        let snapshot = state.snapshot(1, start + Duration::from_secs(2));
+
+        assert_eq!(snapshot.bytes_per_second, 0);
     }
 
     #[test]
@@ -226,17 +322,19 @@ mod tests {
         let progress =
             DownloadProgress::new(3, vec![("100".to_string(), 2), ("200".to_string(), 1)]);
 
-        progress.record_unit_completion("100", 1024, false);
+        progress.record_downloaded_bytes(1024);
+        progress.record_unit_completion("100", false);
         let snapshot = progress.snapshot();
         assert_eq!(snapshot.handled_illusts, 0);
         assert_eq!(snapshot.successful_illusts, 0);
 
-        progress.record_unit_completion("100", 0, true);
+        progress.record_unit_completion("100", true);
         let snapshot = progress.snapshot();
         assert_eq!(snapshot.handled_illusts, 1);
         assert_eq!(snapshot.successful_illusts, 0);
 
-        progress.record_unit_completion("200", 512, false);
+        progress.record_downloaded_bytes(512);
+        progress.record_unit_completion("200", false);
         let snapshot = progress.snapshot();
         assert_eq!(snapshot.handled_illusts, 2);
         assert_eq!(snapshot.successful_illusts, 1);
@@ -247,14 +345,14 @@ mod tests {
         let progress =
             DownloadProgress::new(2, vec![("100".to_string(), 1), ("200".to_string(), 1)]);
 
-        let message = super::render_snapshot_message(progress.snapshot());
+        let message = render_snapshot_message(progress.snapshot());
         assert!(message.contains("已处理作品 0/2"));
         assert!(message.contains("成功完成作品 0/2"));
-        assert!(message.contains("已下载 0B"));
+        assert!(message.contains("已传输 0B"));
     }
 
     #[test]
     fn progress_template_labels_total_images() {
-        assert!(super::PROGRESS_BAR_TEMPLATE.contains("总图片 | {pos}/{len}"));
+        assert!(super::PROGRESS_BAR_TEMPLATE.contains("总图片 {pos}/{len}"));
     }
 }

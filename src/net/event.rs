@@ -38,6 +38,11 @@ pub enum NetEvent {
         bytes: u64,
         target_path: String,
     },
+    TransferProgress {
+        session_id: u64,
+        bytes: u64,
+        target_path: String,
+    },
 }
 
 pub type SessionObserver = Arc<dyn Fn(NetEvent) + Send + Sync>;

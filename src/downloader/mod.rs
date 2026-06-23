@@ -68,13 +68,13 @@ impl Downloader {
 
             async move {
                 let illust_id = item.illust_id.clone();
-                let outcome = downloader.download_one(item).await;
-                let (bytes, failed) = match &outcome {
-                    DownloadOutcome::Downloaded(bytes) => (*bytes, false),
-                    DownloadOutcome::Skipped => (0, false),
-                    DownloadOutcome::Failed(_) => (0, true),
+                let outcome = downloader.download_one(item, progress.clone()).await;
+                let failed = match &outcome {
+                    DownloadOutcome::Downloaded(_) => false,
+                    DownloadOutcome::Skipped => false,
+                    DownloadOutcome::Failed(_) => true,
                 };
-                progress.record_unit_completion(&illust_id, bytes, failed);
+                progress.record_unit_completion(&illust_id, failed);
                 outcome
             }
         }))
@@ -104,7 +104,11 @@ impl Downloader {
         Ok(result)
     }
 
-    async fn download_one(&self, item: DownloadItem) -> DownloadOutcome {
+    async fn download_one(
+        &self,
+        item: DownloadItem,
+        progress: DownloadProgress,
+    ) -> DownloadOutcome {
         let target_path = match item.target_path() {
             Ok(path) => path,
             Err(error) => {
@@ -127,9 +131,17 @@ impl Downloader {
 
         let url = item.image_url;
         let download_result = async {
+            let progress_observer = Arc::new(move |bytes| {
+                progress.record_downloaded_bytes(bytes);
+            });
             let bytes = self
                 .session
-                .download_original_image(&url, &item.illust_id, &target_path)
+                .download_original_image_with_progress(
+                    &url,
+                    &item.illust_id,
+                    &target_path,
+                    Some(progress_observer),
+                )
                 .await?;
             Ok::<u64, eyre::Report>(bytes)
         }

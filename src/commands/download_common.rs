@@ -538,6 +538,7 @@ mod tests {
                 | NetEvent::Retry { session_id, .. }
                 | NetEvent::Failure { session_id, .. }
                 | NetEvent::Cooldown { session_id, .. }
+                | NetEvent::TransferProgress { session_id, .. }
                 | NetEvent::TransferCompleted { session_id, .. } => *session_id,
             })
             .collect::<BTreeSet<_>>();
