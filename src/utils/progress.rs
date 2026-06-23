@@ -265,10 +265,26 @@ fn render_snapshot_message(snapshot: ProgressSnapshot) -> String {
     ));
 
     if let Some(eta) = snapshot.eta_seconds {
-        parts.push(format!("ETA {}s", eta));
+        parts.push(format!("预计剩余 {}", format_duration(eta)));
     }
 
     parts.join(" | ")
+}
+
+fn format_duration(seconds: u64) -> String {
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let secs = seconds % 60;
+
+    match (hours, minutes, secs) {
+        (0, 0, secs) => format!("{secs} 秒"),
+        (0, minutes, 0) => format!("{minutes} 分钟"),
+        (0, minutes, secs) => format!("{minutes} 分 {secs} 秒"),
+        (hours, 0, 0) => format!("{hours} 小时"),
+        (hours, 0, secs) => format!("{hours} 小时 {secs} 秒"),
+        (hours, minutes, 0) => format!("{hours} 小时 {minutes} 分钟"),
+        (hours, minutes, secs) => format!("{hours} 小时 {minutes} 分 {secs} 秒"),
+    }
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -349,6 +365,20 @@ mod tests {
         assert!(message.contains("已处理作品 0/2"));
         assert!(message.contains("成功完成作品 0/2"));
         assert!(message.contains("已传输 0B"));
+    }
+
+    #[test]
+    fn snapshot_message_renders_eta_in_plain_chinese() {
+        let message = render_snapshot_message(super::ProgressSnapshot {
+            downloaded_bytes: 1024,
+            bytes_per_second: 512,
+            eta_seconds: Some(195),
+            total_illusts: 1,
+            handled_illusts: 0,
+            successful_illusts: 0,
+        });
+
+        assert!(message.contains("预计剩余 3 分 15 秒"));
     }
 
     #[test]
