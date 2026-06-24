@@ -1,10 +1,11 @@
 # Wiki Index
 
-> 12 pages | Last updated: 2026-06-23T09:55:45.683Z
+> 14 pages | Last updated: 2026-06-24T08:56:27.000Z
 
 ## architecture
 
 - [Picals Crawler 下载预览与 Ranking 调研报告 2026-06-21](picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md) — # Picals Crawler 下载预览与 Ranking 调研报告 2026-06-21
+- [Picals Crawler ugoira GIF 下载调研报告 2026-06-24](picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md) — # Picals Crawler Ugoira GIF 下载调研报告 2026-06-24
 - [Picals Crawler 技术设计文档](picals-crawler-技术设计文档.md) — # Picals-Crawler 技术设计文档
 - [Picals Crawler 项目理解基线](picals-crawler-项目理解基线.md) — # Picals Crawler 项目理解基线
 
@@ -23,5 +24,6 @@
 ## session-log
 
 - [Picals Crawler net 层 SSOT 实现记录 2026-06-22](picals-crawler-net-层-ssot-实现记录-2026-06-22.md) — # Picals Crawler net 层 SSOT 实现记录 2026-06-22
+- [Picals Crawler ugoira GIF 实现记录 2026-06-24](picals-crawler-ugoira-gif-实现记录-2026-06-24.md) — # Picals Crawler ugoira GIF 实现记录 2026-06-24
 - [Picals Crawler UX 优化执行记录 2026-06-21](picals-crawler-ux-优化执行记录-2026-06-21.md) — # Picals Crawler UX 优化执行记录 2026-06-21
 - [Picals Crawler 测试架构升级实现记录 2026-06-23](picals-crawler-测试架构升级实现记录-2026-06-23.md) — # Picals Crawler 测试架构升级实现记录 2026-06-23

@@ -1,5 +1,9 @@
 # Wiki Log
 
+## [2026-06-24T08:56:27.000Z] add
+- **Pages:** picals-crawler-ugoira-gif-实现记录-2026-06-24.md, picals-crawler-技术设计文档.md, index.md
+- **Summary:** Synced wiki with completed ugoira GIF integration, asset-planning architecture, replay/manifest contract changes, and implementation record
+
 ## [2026-06-23T10:00:00.000Z] add
 - **Pages:** picals-crawler-测试指南.md, index.md
 - **Summary:** Added testing guide as the repository test SSOT and updated AGENTS routing expectations
@@ -168,4 +172,3 @@
 ## [2026-06-23T09:55:45.894Z] lint
 - **Pages:** none
 - **Summary:** Lint: 0 issues (0 orphan, 0 stale, 0 broken, 0 contradictions)
-
