@@ -45,7 +45,7 @@ async fn retry_command_replays_manifest_in_black_box_mode() {
             mode: DownloadMode::Illust,
             stage: FailureStage::Download,
             illust_id: Some("123456".to_string()),
-            image_url: Some(format!("{}/img-original/123456_p0.png", server.uri())),
+            source_url: Some(format!("{}/img-original/123456_p0.png", server.uri())),
             target_path: Some(
                 output_root
                     .join("123456/123456_p0.png")

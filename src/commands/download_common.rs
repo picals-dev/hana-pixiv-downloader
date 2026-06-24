@@ -506,7 +506,7 @@ mod tests {
                 mode: crate::config::DownloadMode::Illust,
                 stage: FailureStage::Download,
                 illust_id: Some("123456".to_string()),
-                image_url: Some(format!(
+                source_url: Some(format!(
                     "{}/img-original/img/2024/01/02/03/04/05/123456_p0.png",
                     server.uri()
                 )),
@@ -602,7 +602,7 @@ mod tests {
                 mode: crate::config::DownloadMode::Illust,
                 stage: FailureStage::Download,
                 illust_id: Some("123456".to_string()),
-                image_url: Some("https://example.invalid/123456_p0.png".to_string()),
+                source_url: Some("https://example.invalid/123456_p0.png".to_string()),
                 target_path: Some(
                     temp.path()
                         .join("illust-root/123456/123456_p0.png")

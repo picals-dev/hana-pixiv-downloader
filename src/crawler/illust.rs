@@ -5,13 +5,11 @@ use std::sync::Arc;
 use crate::{
     config::{DownloadMode, ResolvedDownloadOptions},
     crawler::CrawlContext,
-    crawler::shared::{download_items, export_tags_json},
+    crawler::shared::{download_artworks, export_tags_json, plan_artworks_for_illust_ids},
     downloader::DownloadResult,
-    downloader::image::DownloadItem,
     error::AppResult,
     net::PixivNetSession,
     output::resolve_output_layout,
-    pixiv::selector::select_page_original_urls,
 };
 
 #[derive(Debug, Clone)]
@@ -46,42 +44,33 @@ impl IllustCrawler {
     }
 
     pub async fn run(&self) -> AppResult<DownloadResult> {
-        let pages = self
-            .context
-            .session
-            .fetch_illust_pages(&self.illust_id)
-            .await?;
-
-        let urls = select_page_original_urls(&pages)?;
         let layout = resolve_output_layout(
             self.context.options.mode,
             &self.context.options.directory,
             &self.illust_id,
         )?;
         let target_dir = layout.context_dir().to_path_buf();
-        let items = urls
-            .into_iter()
-            .map(|image_url| DownloadItem {
-                illust_id: self.illust_id.clone(),
-                image_url,
-                target_dir: target_dir.clone(),
-            })
-            .collect::<Vec<_>>();
-        let mut result = download_items(
-            self.context.options.clone(),
-            target_dir.clone(),
-            Arc::clone(&self.context.session),
-            &items,
-        )
-        .await?;
-
-        let failure_records = export_tags_json(
+        let planned = plan_artworks_for_illust_ids(
             &self.context.session,
-            std::slice::from_ref(&self.illust_id),
-            &target_dir,
+            vec![self.illust_id.clone()],
+            &layout,
             &self.context.options,
         )
         .await;
+        let mut failure_records = planned.failures;
+        failure_records.extend(export_tags_json(
+            &planned.detail_cache,
+            &target_dir,
+            &self.context.options,
+        ));
+
+        let mut result = download_artworks(
+            self.context.options.clone(),
+            target_dir.clone(),
+            Arc::clone(&self.context.session),
+            &planned.plans,
+        )
+        .await?;
         result.failed += failure_records.len();
         result.total += failure_records.len();
         result.failure_records.extend(failure_records);

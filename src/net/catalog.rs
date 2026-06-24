@@ -32,10 +32,12 @@ pub enum RequestKind {
     UserProfile,
     IllustPages,
     IllustDetail,
+    UgoiraMeta,
     KeywordSearch,
     Ranking,
     Bookmark,
     ImageDownload,
+    UgoiraDownload,
 }
 
 impl RequestKind {
@@ -45,20 +47,23 @@ impl RequestKind {
             Self::UserProfile => "user_profile",
             Self::IllustPages => "illust_pages",
             Self::IllustDetail => "illust_detail",
+            Self::UgoiraMeta => "ugoira_meta",
             Self::KeywordSearch => "keyword_search",
             Self::Ranking => "ranking",
             Self::Bookmark => "bookmark",
             Self::ImageDownload => "image_download",
+            Self::UgoiraDownload => "ugoira_download",
         }
     }
 
     pub fn host_kind(self) -> HostKind {
         match self {
-            Self::ImageDownload => HostKind::Image,
+            Self::ImageDownload | Self::UgoiraDownload => HostKind::Image,
             Self::Homepage
             | Self::UserProfile
             | Self::IllustPages
             | Self::IllustDetail
+            | Self::UgoiraMeta
             | Self::KeywordSearch
             | Self::Ranking
             | Self::Bookmark => HostKind::Metadata,
@@ -122,6 +127,14 @@ impl PixivCatalog {
         )
     }
 
+    pub fn ugoira_meta(&self, illust_id: &str) -> AppResult<RequestSpec> {
+        self.metadata_request(
+            RequestKind::UgoiraMeta,
+            &format!("/ajax/illust/{illust_id}/ugoira_meta?lang=zh"),
+            Some(&format!("/artworks/{illust_id}")),
+        )
+    }
+
     pub fn keyword_page(
         &self,
         keyword: &str,
@@ -177,6 +190,19 @@ impl PixivCatalog {
         let url = Url::parse(image_url)?;
         Ok(RequestSpec {
             kind: RequestKind::ImageDownload,
+            url,
+            referer: Some(
+                self.metadata_base_url
+                    .join(&format!("/artworks/{illust_id}"))?
+                    .to_string(),
+            ),
+        })
+    }
+
+    pub fn ugoira_download(&self, image_url: &str, illust_id: &str) -> AppResult<RequestSpec> {
+        let url = Url::parse(image_url)?;
+        Ok(RequestSpec {
+            kind: RequestKind::UgoiraDownload,
             url,
             referer: Some(
                 self.metadata_base_url
@@ -268,6 +294,8 @@ mod tests {
     fn request_kind_maps_to_expected_host() {
         assert_eq!(RequestKind::UserProfile.host_kind(), HostKind::Metadata);
         assert_eq!(RequestKind::ImageDownload.host_kind(), HostKind::Image);
+        assert_eq!(RequestKind::UgoiraMeta.host_kind(), HostKind::Metadata);
+        assert_eq!(RequestKind::UgoiraDownload.host_kind(), HostKind::Image);
     }
 
     #[test]

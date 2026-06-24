@@ -1,15 +1,14 @@
 //! 失败清单回放执行。
 
-use std::{collections::BTreeSet, path::PathBuf, sync::Arc};
+use std::{collections::BTreeSet, path::Path, sync::Arc};
 
 use crate::{
     auth::Credential,
-    downloader::image::DownloadItem,
+    downloader::{ArtworkDownloadPlan, ImageArtworkPlan},
     error::AppResult,
     failure::{FailureRecord, FailureStage, ReplayCommand},
     net::{PixivNetSession, resolve_base_url, test_hook::attach_session_observer},
     output::resolve_output_layout,
-    pixiv::selector::select_page_original_urls,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -58,17 +57,9 @@ pub async fn replay_failures_with_session(
             FailureStage::Tags => {
                 tag_record_indices.push(index);
             }
-            FailureStage::Download => {
+            FailureStage::Collect | FailureStage::Download | FailureStage::Convert => {
                 report.attempted += 1;
-                if replay_download_record(Arc::clone(&session), &options, record.clone()).await? {
-                    report.recovered += 1;
-                } else {
-                    report.remaining_records.push(record);
-                }
-            }
-            FailureStage::Collect => {
-                report.attempted += 1;
-                match replay_collect_record(
+                match replay_artwork_record(
                     Arc::clone(&session),
                     &layout,
                     options.clone(),
@@ -102,42 +93,7 @@ pub async fn replay_failures_with_session(
     Ok(report)
 }
 
-async fn replay_download_record(
-    session: Arc<PixivNetSession>,
-    options: &crate::config::ResolvedDownloadOptions,
-    record: FailureRecord,
-) -> AppResult<bool> {
-    let Some(image_url) = record.image_url.clone() else {
-        return Ok(false);
-    };
-    let Some(illust_id) = record.illust_id.clone() else {
-        return Ok(false);
-    };
-    let Some(target_path) = record.target_path.clone() else {
-        return Ok(false);
-    };
-    let target_dir = PathBuf::from(&target_path)
-        .parent()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    let item = DownloadItem {
-        illust_id,
-        image_url,
-        target_dir,
-    };
-
-    let result = crate::crawler::shared::download_items(
-        options.clone(),
-        options.directory.clone(),
-        session,
-        &[item],
-    )
-    .await?;
-
-    Ok(result.failure_records.is_empty())
-}
-
-async fn replay_collect_record(
+async fn replay_artwork_record(
     session: Arc<PixivNetSession>,
     layout: &crate::output::OutputLayout,
     options: crate::config::ResolvedDownloadOptions,
@@ -147,27 +103,75 @@ async fn replay_collect_record(
         return Ok(None);
     };
 
-    let pages = session.fetch_illust_pages(&illust_id).await?;
-    let image_urls = select_page_original_urls(&pages)?;
-    let target_dir = layout.illust_dir(&illust_id)?;
-    let items = image_urls
-        .into_iter()
-        .map(|image_url| DownloadItem {
-            illust_id: illust_id.clone(),
-            image_url,
-            target_dir: target_dir.clone(),
-        })
-        .collect::<Vec<_>>();
+    if record.stage == FailureStage::Download && is_direct_image_retry_record(&record) {
+        return replay_image_download_record(session, options, record).await;
+    }
 
-    let result = crate::crawler::shared::download_items(
-        options.clone(),
+    let planned = crate::crawler::shared::plan_artworks_for_illust_ids(
+        &session,
+        vec![illust_id],
+        layout,
+        &options,
+    )
+    .await;
+    let mut failures = planned.failures;
+
+    if planned.plans.is_empty() {
+        return Ok(Some(failures));
+    }
+
+    let result = crate::crawler::shared::download_artworks(
+        options,
         layout.context_dir().to_path_buf(),
         session,
-        &items,
+        &planned.plans,
+    )
+    .await?;
+    failures.extend(result.failure_records);
+
+    Ok(Some(failures))
+}
+
+async fn replay_image_download_record(
+    session: Arc<PixivNetSession>,
+    options: crate::config::ResolvedDownloadOptions,
+    record: FailureRecord,
+) -> AppResult<Option<Vec<FailureRecord>>> {
+    let Some(illust_id) = record.illust_id.clone() else {
+        return Ok(None);
+    };
+    let Some(source_url) = record.source_url.clone() else {
+        return Ok(None);
+    };
+    let Some(target_path) = record.target_path.clone() else {
+        return Ok(None);
+    };
+
+    let target_dir = Path::new(&target_path)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    let result = crate::crawler::shared::download_artworks(
+        options.clone(),
+        options.directory.clone(),
+        session,
+        &[ArtworkDownloadPlan::Images(ImageArtworkPlan {
+            illust_id,
+            image_urls: vec![source_url],
+            target_dir,
+        })],
     )
     .await?;
 
     Ok(Some(result.failure_records))
+}
+
+fn is_direct_image_retry_record(record: &FailureRecord) -> bool {
+    let Some(target_path) = record.target_path.as_deref() else {
+        return false;
+    };
+
+    !target_path.ends_with(".gif") && record.source_url.is_some()
 }
 
 async fn replay_tag_records(
@@ -193,7 +197,7 @@ async fn replay_tag_records(
     }
 
     report.attempted += illust_ids.len();
-    let failures = crate::crawler::shared::export_tags_json(
+    let failures = crate::crawler::shared::export_tags_json_for_illust_ids(
         &session,
         &illust_ids.into_iter().collect::<Vec<_>>(),
         layout.context_dir(),

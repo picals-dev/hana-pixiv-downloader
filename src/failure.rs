@@ -20,6 +20,7 @@ use crate::{
 pub enum FailureStage {
     Collect,
     Download,
+    Convert,
     Tags,
 }
 
@@ -28,7 +29,8 @@ pub struct FailureRecord {
     pub mode: DownloadMode,
     pub stage: FailureStage,
     pub illust_id: Option<String>,
-    pub image_url: Option<String>,
+    #[serde(default, alias = "image_url", skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
     pub target_path: Option<String>,
     pub error_kind: String,
     pub error_message: String,
@@ -40,7 +42,7 @@ impl FailureRecord {
         mode: DownloadMode,
         stage: FailureStage,
         illust_id: Option<String>,
-        image_url: Option<String>,
+        source_url: Option<String>,
         target_path: Option<String>,
         error: &eyre::Report,
     ) -> Self {
@@ -49,7 +51,7 @@ impl FailureRecord {
             mode,
             stage,
             illust_id,
-            image_url,
+            source_url,
             target_path,
             error_kind: classification.error_kind,
             error_message: format!("{error:#}"),
@@ -61,7 +63,7 @@ impl FailureRecord {
         mode: DownloadMode,
         stage: FailureStage,
         illust_id: Option<String>,
-        image_url: Option<String>,
+        source_url: Option<String>,
         target_path: Option<String>,
         error: &CrawlerError,
     ) -> Self {
@@ -71,7 +73,7 @@ impl FailureRecord {
             mode,
             stage,
             illust_id,
-            image_url,
+            source_url,
             target_path,
             error_kind: classification.error_kind,
             error_message: error.to_string(),
@@ -252,6 +254,10 @@ impl ReplayCommand {
 
 impl FailureManifest {
     pub fn new(command: ReplayCommand, records: Vec<FailureRecord>) -> AppResult<Self> {
+        for record in &records {
+            ensure_persistable_record(record)?;
+        }
+
         Ok(Self {
             created_at: manifest_timestamp()?,
             command,
@@ -300,6 +306,34 @@ fn parse_manifest_system_time(value: &str) -> AppResult<SystemTime> {
     )
     .parse()?;
     Ok(timestamp.into())
+}
+
+fn ensure_persistable_record(record: &FailureRecord) -> AppResult<()> {
+    if let Some(target_path) = record.target_path.as_deref() {
+        let path = Path::new(target_path);
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        if file_name.ends_with(".part") {
+            return Err(CrawlerError::InvalidInput(format!(
+                "失败清单不允许持久化临时 .part 路径: {target_path}"
+            ))
+            .into());
+        }
+
+        if path
+            .components()
+            .any(|component| component.as_os_str() == ".picals-workspace")
+        {
+            return Err(CrawlerError::InvalidInput(format!(
+                "失败清单不允许持久化临时工作区路径: {target_path}"
+            ))
+            .into());
+        }
+    }
+
+    Ok(())
 }
 
 pub fn classify_error(error: &eyre::Report) -> ErrorClassification {
@@ -357,6 +391,10 @@ fn classify_crawler_error(error: &CrawlerError) -> ErrorClassification {
         },
         CrawlerError::Io(_) => ErrorClassification {
             error_kind: "io".to_string(),
+            retryable: true,
+        },
+        CrawlerError::MediaConversion(_) => ErrorClassification {
+            error_kind: "convert".to_string(),
             retryable: true,
         },
         CrawlerError::Parse(_) => ErrorClassification {
@@ -458,7 +496,7 @@ mod tests {
                 mode: DownloadMode::Illust,
                 stage: FailureStage::Download,
                 illust_id: Some("123456".to_string()),
-                image_url: Some("https://example.com/123456_p0.png".to_string()),
+                source_url: Some("https://example.com/123456_p0.png".to_string()),
                 target_path: Some("/tmp/picals/123456/123456_p0.png".to_string()),
                 error_kind: "timeout".to_string(),
                 error_message: "timeout".to_string(),
@@ -505,5 +543,39 @@ mod tests {
 
         assert_eq!(classification.error_kind, "http_501");
         assert!(!classification.retryable);
+    }
+
+    #[test]
+    fn media_conversion_errors_are_retryable() {
+        let error = eyre::Report::new(CrawlerError::MediaConversion("broken".to_string()));
+        let classification = classify_error(&error);
+
+        assert_eq!(classification.error_kind, "convert");
+        assert!(classification.retryable);
+    }
+
+    #[test]
+    fn failure_manifest_rejects_workspace_paths() {
+        let error = FailureManifest::new(
+            ReplayCommand::Illust {
+                illust_id: "123456".to_string(),
+                options: ReplayOptions::from(&options()),
+            },
+            vec![FailureRecord {
+                mode: DownloadMode::Illust,
+                stage: FailureStage::Convert,
+                illust_id: Some("123456".to_string()),
+                source_url: Some("https://example.com/ugoira.zip".to_string()),
+                target_path: Some(
+                    "/tmp/picals/123456/.picals-workspace/output.gif.part".to_string(),
+                ),
+                error_kind: "convert".to_string(),
+                error_message: "broken".to_string(),
+                retryable: true,
+            }],
+        )
+        .unwrap_err();
+
+        assert!(format!("{error:#}").contains("不允许持久化"));
     }
 }

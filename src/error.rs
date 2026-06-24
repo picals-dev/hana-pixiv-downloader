@@ -47,6 +47,9 @@ pub enum CrawlerError {
     #[error("下载中断: {0}")]
     DownloadInterrupted(String),
 
+    #[error("动图转换失败: {0}")]
+    MediaConversion(String),
+
     #[error("HTTP 请求失败: 状态码 {status}，{context}")]
     HttpStatus { status: u16, context: String },
 

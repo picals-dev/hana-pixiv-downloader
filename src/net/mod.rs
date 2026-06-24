@@ -7,7 +7,7 @@ mod policy;
 mod session;
 mod state;
 pub(crate) mod test_hook;
-mod transfer;
+pub(crate) mod transfer;
 
 pub use catalog::{CurrentUserPage, HostKind, RequestKind};
 pub use event::{NetEvent, SessionObserver};

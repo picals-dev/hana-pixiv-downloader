@@ -5,3 +5,5 @@ mod support;
 mod manifest;
 #[path = "contracts/selector.rs"]
 mod selector;
+#[path = "contracts/ugoira.rs"]
+mod ugoira;

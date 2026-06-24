@@ -22,6 +22,26 @@ use crate::support::env::{
     EnvVarGuard, install_observer, lock_env, set_base_url, set_config_home, unset_download_env,
 };
 
+async fn mount_illust_detail(server: &MockServer, illust_id: &str) {
+    Mock::given(method("GET"))
+        .and(path(format!("/ajax/illust/{illust_id}")))
+        .and(header(
+            "referer",
+            format!("{}/artworks/{illust_id}", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "error": false,
+            "body": {
+                "illustType": 0,
+                "tags": {
+                    "tags": [{ "tag": "static" }]
+                }
+            }
+        })))
+        .mount(server)
+        .await;
+}
+
 fn observed_session_ids(events: &[NetEvent]) -> BTreeSet<u64> {
     events
         .iter()
@@ -155,7 +175,7 @@ async fn retry_command_can_read_manifest_file() {
             mode: picals_crawler::config::DownloadMode::Illust,
             stage: FailureStage::Download,
             illust_id: Some("123456".to_string()),
-            image_url: Some("https://example.com/123456_p0.png".to_string()),
+            source_url: Some("https://example.com/123456_p0.png".to_string()),
             target_path: Some("/tmp/picals/illust/123456/123456_p0.png".to_string()),
             error_kind: "timeout".to_string(),
             error_message: "timeout".to_string(),
@@ -221,7 +241,7 @@ async fn retry_command_can_recover_retryable_download_record() {
             mode: picals_crawler::config::DownloadMode::Illust,
             stage: FailureStage::Download,
             illust_id: Some("123456".to_string()),
-            image_url: Some(format!(
+            source_url: Some(format!(
                 "{}/img-original/img/2024/01/02/03/04/05/123456_p0.png",
                 server.uri()
             )),
@@ -276,6 +296,7 @@ async fn auto_replay_reuses_same_session_instance_for_single_download_command() 
         })))
         .mount(&server)
         .await;
+    mount_illust_detail(&server, "123456").await;
 
     Mock::given(method("GET"))
         .and(path("/ajax/illust/123456/pages"))
@@ -349,6 +370,7 @@ async fn standalone_retry_uses_new_session_instance_but_same_net_stack() {
     let _base_url = set_base_url(&server.uri());
     let _download_env = unset_download_env();
     Credential::new("cookie").unwrap().save().unwrap();
+    mount_illust_detail(&server, "111111").await;
 
     Mock::given(method("GET"))
         .and(path("/ajax/illust/111111/pages"))
@@ -426,7 +448,7 @@ async fn standalone_retry_uses_new_session_instance_but_same_net_stack() {
             mode: picals_crawler::config::DownloadMode::Illust,
             stage: FailureStage::Download,
             illust_id: Some("222222".to_string()),
-            image_url: Some(format!("{}/img-original/222222_p0.png", server.uri())),
+            source_url: Some(format!("{}/img-original/222222_p0.png", server.uri())),
             target_path: Some(
                 temp.path()
                     .join("retry-root/222222/222222_p0.png")
@@ -500,7 +522,7 @@ async fn retry_command_skips_non_retryable_record() {
             mode: picals_crawler::config::DownloadMode::Illust,
             stage: FailureStage::Download,
             illust_id: Some("123456".to_string()),
-            image_url: Some("https://example.invalid/123456_p0.png".to_string()),
+            source_url: Some("https://example.invalid/123456_p0.png".to_string()),
             target_path: Some(
                 temp.path()
                     .join("illust-root/123456/123456_p0.png")

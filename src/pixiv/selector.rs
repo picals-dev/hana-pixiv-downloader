@@ -15,6 +15,25 @@ static CURRENT_USER_ID_PATTERNS: LazyLock<[Regex; 4]> = LazyLock::new(|| {
     ]
 });
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IllustType {
+    Image,
+    Ugoira,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UgoiraFrame {
+    pub file: String,
+    pub delay_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UgoiraMetadata {
+    pub original_src: String,
+    pub mime_type: Option<String>,
+    pub frames: Vec<UgoiraFrame>,
+}
+
 pub fn select_user_illust_ids(value: &Value) -> Result<Vec<String>, CrawlerError> {
     let body = value
         .get("body")
@@ -162,6 +181,64 @@ pub fn select_page_original_urls(value: &Value) -> Result<Vec<String>, CrawlerEr
     Ok(urls)
 }
 
+pub fn select_illust_type(value: &Value) -> Result<IllustType, CrawlerError> {
+    let illust_type = value
+        .pointer("/body/illustType")
+        .and_then(|value| match value {
+            Value::Number(number) => number.as_u64(),
+            Value::String(text) => text.parse::<u64>().ok(),
+            _ => None,
+        })
+        .ok_or_else(|| CrawlerError::Parse("缺少 body.illustType".to_string()))?;
+
+    Ok(match illust_type {
+        2 => IllustType::Ugoira,
+        _ => IllustType::Image,
+    })
+}
+
+pub fn select_ugoira_metadata(value: &Value) -> Result<UgoiraMetadata, CrawlerError> {
+    let original_src = value
+        .pointer("/body/originalSrc")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| CrawlerError::Parse("缺少 body.originalSrc".to_string()))?;
+    let frames = value
+        .pointer("/body/frames")
+        .and_then(Value::as_array)
+        .ok_or_else(|| CrawlerError::Parse("缺少 body.frames 数组".to_string()))?;
+
+    let mut parsed_frames = Vec::with_capacity(frames.len());
+    for frame in frames {
+        let file = frame
+            .get("file")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| CrawlerError::Parse("ugoira frame 缺少 file".to_string()))?;
+        let delay_ms = frame
+            .get("delay")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| CrawlerError::Parse("ugoira frame 缺少 delay".to_string()))?;
+        parsed_frames.push(UgoiraFrame {
+            file: file.to_string(),
+            delay_ms,
+        });
+    }
+
+    if parsed_frames.is_empty() {
+        return Err(CrawlerError::Parse("ugoira frames 为空".to_string()));
+    }
+
+    Ok(UgoiraMetadata {
+        original_src: original_src.to_string(),
+        mime_type: value
+            .pointer("/body/mime_type")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        frames: parsed_frames,
+    })
+}
+
 pub fn select_illust_tags(value: &Value) -> Result<Vec<String>, CrawlerError> {
     let tags = value
         .pointer("/body/tags/tags")
@@ -207,4 +284,44 @@ fn normalize_user_id(user_id: &str) -> Result<String, CrawlerError> {
     }
 
     Ok(trimmed.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IllustType, select_illust_type, select_ugoira_metadata};
+
+    #[test]
+    fn illust_type_two_is_ugoira() {
+        let value = serde_json::json!({
+            "body": {
+                "illustType": 2
+            }
+        });
+
+        assert_eq!(select_illust_type(&value).unwrap(), IllustType::Ugoira);
+    }
+
+    #[test]
+    fn ugoira_metadata_can_be_selected() {
+        let value = serde_json::json!({
+            "body": {
+                "originalSrc": "https://i.pximg.net/img-zip-ugoira/example.zip",
+                "mime_type": "image/png",
+                "frames": [
+                    { "file": "000000.png", "delay": 60 },
+                    { "file": "000001.png", "delay": 120 }
+                ]
+            }
+        });
+
+        let metadata = select_ugoira_metadata(&value).unwrap();
+        assert_eq!(
+            metadata.original_src,
+            "https://i.pximg.net/img-zip-ugoira/example.zip"
+        );
+        assert_eq!(metadata.mime_type.as_deref(), Some("image/png"));
+        assert_eq!(metadata.frames.len(), 2);
+        assert_eq!(metadata.frames[0].file, "000000.png");
+        assert_eq!(metadata.frames[0].delay_ms, 60);
+    }
 }

@@ -18,7 +18,7 @@ pub struct RequestPolicy {
 
 pub fn policy_for(kind: RequestKind) -> RequestPolicy {
     match kind {
-        RequestKind::ImageDownload => RequestPolicy {
+        RequestKind::ImageDownload | RequestKind::UgoiraDownload => RequestPolicy {
             timeout: Duration::from_secs(90),
             base_delay: Duration::from_millis(300),
             max_delay: Duration::from_secs(8),
@@ -28,6 +28,7 @@ pub fn policy_for(kind: RequestKind) -> RequestPolicy {
         | RequestKind::UserProfile
         | RequestKind::IllustPages
         | RequestKind::IllustDetail
+        | RequestKind::UgoiraMeta
         | RequestKind::KeywordSearch
         | RequestKind::Ranking
         | RequestKind::Bookmark => RequestPolicy {
@@ -136,10 +137,12 @@ fn stable_kind_seed(kind: RequestKind) -> u64 {
         RequestKind::UserProfile => 2,
         RequestKind::IllustPages => 3,
         RequestKind::IllustDetail => 4,
-        RequestKind::KeywordSearch => 5,
-        RequestKind::Ranking => 6,
-        RequestKind::Bookmark => 7,
-        RequestKind::ImageDownload => 8,
+        RequestKind::UgoiraMeta => 5,
+        RequestKind::KeywordSearch => 6,
+        RequestKind::Ranking => 7,
+        RequestKind::Bookmark => 8,
+        RequestKind::ImageDownload => 9,
+        RequestKind::UgoiraDownload => 10,
     }
 }
 

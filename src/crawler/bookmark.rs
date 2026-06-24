@@ -6,7 +6,7 @@ use crate::{
     config::{DownloadMode, ResolvedDownloadOptions},
     crawler::CrawlContext,
     crawler::shared::{
-        collect_download_items_for_illust_ids, download_items, export_tags_json, sort_illust_ids,
+        download_artworks, export_tags_json, plan_artworks_for_illust_ids, sort_illust_ids,
     },
     downloader::DownloadResult,
     error::AppResult,
@@ -95,28 +95,25 @@ impl BookmarkCrawler {
             &self.context.options.directory,
             &self.user_id,
         )?;
-        let (items, mut failure_records) = collect_download_items_for_illust_ids(
+        let planned = plan_artworks_for_illust_ids(
             &self.context.session,
             illust_ids.clone(),
             &layout,
             &self.context.options,
         )
         .await;
-        failure_records.extend(
-            export_tags_json(
-                &self.context.session,
-                &illust_ids,
-                layout.context_dir(),
-                &self.context.options,
-            )
-            .await,
-        );
+        let mut failure_records = planned.failures;
+        failure_records.extend(export_tags_json(
+            &planned.detail_cache,
+            layout.context_dir(),
+            &self.context.options,
+        ));
 
-        let mut result = download_items(
+        let mut result = download_artworks(
             self.context.options.clone(),
             layout.context_dir().to_path_buf(),
             Arc::clone(&self.context.session),
-            &items,
+            &planned.plans,
         )
         .await?;
         result.failed += failure_records.len();

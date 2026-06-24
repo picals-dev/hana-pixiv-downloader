@@ -9,3 +9,5 @@ mod help;
 mod parse;
 #[path = "cli/retry.rs"]
 mod retry;
+#[path = "cli/ugoira.rs"]
+mod ugoira;

@@ -198,6 +198,11 @@ impl PixivNetSession {
         self.get_json(spec).await
     }
 
+    pub async fn fetch_ugoira_meta(&self, illust_id: &str) -> AppResult<Value> {
+        let spec = self.catalog.ugoira_meta(illust_id)?;
+        self.get_json(spec).await
+    }
+
     pub async fn fetch_keyword_page(
         &self,
         keyword: &str,
@@ -245,6 +250,28 @@ impl PixivNetSession {
         on_chunk: Option<Arc<TransferChunkObserver>>,
     ) -> AppResult<u64> {
         let spec = self.catalog.image_download(image_url, illust_id)?;
+        self.download_binary_with_progress(spec, target_path, on_chunk)
+            .await
+    }
+
+    pub async fn download_ugoira_archive(
+        &self,
+        image_url: &str,
+        illust_id: &str,
+        target_path: &Path,
+        on_chunk: Option<Arc<TransferChunkObserver>>,
+    ) -> AppResult<u64> {
+        let spec = self.catalog.ugoira_download(image_url, illust_id)?;
+        self.download_binary_with_progress(spec, target_path, on_chunk)
+            .await
+    }
+
+    async fn download_binary_with_progress(
+        &self,
+        spec: RequestSpec,
+        target_path: &Path,
+        on_chunk: Option<Arc<TransferChunkObserver>>,
+    ) -> AppResult<u64> {
         if ensure_file_exists_and_nonempty(target_path)? {
             return Ok(0);
         }

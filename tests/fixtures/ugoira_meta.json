@@ -1,0 +1,19 @@
+{
+  "error": false,
+  "message": "",
+  "body": {
+    "src": "https://i.pximg.net/img-zip-ugoira/img/2024/01/02/03/04/05/654321_ugoira600x600.zip",
+    "originalSrc": "https://i.pximg.net/img-zip-ugoira/img/2024/01/02/03/04/05/654321_ugoira1920x1080.zip",
+    "mime_type": "image/png",
+    "frames": [
+      {
+        "file": "000000.png",
+        "delay": 60
+      },
+      {
+        "file": "000001.png",
+        "delay": 120
+      }
+    ]
+  }
+}

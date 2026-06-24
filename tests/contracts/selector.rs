@@ -1,8 +1,8 @@
 use picals_crawler::pixiv::selector::{
     count_user_illust_ids, select_bookmark_illust_ids, select_bookmark_total,
-    select_current_user_id, select_illust_tags, select_keyword_illust_ids, select_keyword_total,
-    select_page_original_urls, select_ranking_illust_ids, select_ranking_total,
-    select_user_illust_ids,
+    select_current_user_id, select_illust_tags, select_illust_type, select_keyword_illust_ids,
+    select_keyword_total, select_page_original_urls, select_ranking_illust_ids,
+    select_ranking_total, select_user_illust_ids,
 };
 
 use crate::support::fixtures::{read_fixture, read_text_fixture};
@@ -35,6 +35,15 @@ fn select_tags_prefers_translation_then_raw_tag() {
     let tags = select_illust_tags(&value).unwrap();
 
     assert_eq!(tags, vec!["Hatsune Miku", "オリジナル"]);
+}
+
+#[test]
+fn select_regular_illust_type_from_detail_fixture() {
+    let value = read_fixture("illust_detail.json");
+    assert_eq!(
+        select_illust_type(&value).unwrap(),
+        picals_crawler::pixiv::selector::IllustType::Image
+    );
 }
 
 #[test]

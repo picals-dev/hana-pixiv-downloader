@@ -2,17 +2,17 @@
   "error": false,
   "message": "",
   "body": {
-    "illustType": 0,
+    "illustType": 2,
     "tags": {
       "tags": [
         {
-          "tag": "初音ミク",
+          "tag": "うごイラ",
           "translation": {
-            "en": "Hatsune Miku"
+            "en": "ugoira"
           }
         },
         {
-          "tag": "オリジナル"
+          "tag": "テスト"
         }
       ]
     }

@@ -64,6 +64,21 @@ async fn user_download_writes_files_in_black_box_mode() {
         .await;
 
     Mock::given(method("GET"))
+        .and(path("/ajax/illust/123456"))
+        .and(header("referer", artwork_referer(&server.uri(), "123456")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "error": false,
+            "body": {
+                "illustType": 0,
+                "tags": {
+                    "tags": [{ "tag": "static" }]
+                }
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
         .and(path("/ajax/illust/123456/pages"))
         .and(header("referer", artwork_referer(&server.uri(), "123456")))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({

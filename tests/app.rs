@@ -5,3 +5,5 @@ mod support;
 mod command_dispatch;
 #[path = "app/crawler.rs"]
 mod crawler;
+#[path = "app/ugoira.rs"]
+mod ugoira;

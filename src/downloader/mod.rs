@@ -1,6 +1,7 @@
 //! 下载模块骨架。
 
 pub mod image;
+pub mod ugoira;
 
 use std::{
     collections::BTreeMap,
@@ -17,10 +18,14 @@ use crate::{
     error::AppResult,
     failure::{FailureRecord, FailureStage},
     net::PixivNetSession,
+    pixiv::selector::UgoiraMetadata,
     utils::progress::DownloadProgress,
 };
 
-use self::image::DownloadItem;
+use self::{
+    image::DownloadItem,
+    ugoira::{UgoiraDownloadError, download_ugoira_with_progress},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DownloadResult {
@@ -30,6 +35,43 @@ pub struct DownloadResult {
     pub failed: usize,
     pub total_bytes: u64,
     pub failure_records: Vec<FailureRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageArtworkPlan {
+    pub illust_id: String,
+    pub image_urls: Vec<String>,
+    pub target_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UgoiraDownloadPlan {
+    pub illust_id: String,
+    pub source_url: String,
+    pub target_path: PathBuf,
+    pub metadata: UgoiraMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtworkDownloadPlan {
+    Images(ImageArtworkPlan),
+    Ugoira(UgoiraDownloadPlan),
+}
+
+impl ArtworkDownloadPlan {
+    pub fn illust_id(&self) -> &str {
+        match self {
+            Self::Images(plan) => &plan.illust_id,
+            Self::Ugoira(plan) => &plan.illust_id,
+        }
+    }
+
+    pub fn output_count(&self) -> u64 {
+        match self {
+            Self::Images(plan) => plan.image_urls.len() as u64,
+            Self::Ugoira(_) => 1,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -52,28 +94,25 @@ impl Downloader {
         }
     }
 
-    pub async fn download(&self, items: &[DownloadItem]) -> AppResult<DownloadResult> {
-        if items.is_empty() {
+    pub async fn download(&self, plans: &[ArtworkDownloadPlan]) -> AppResult<DownloadResult> {
+        if plans.is_empty() {
             return Ok(DownloadResult::default());
         }
 
         fs::create_dir_all(&self.directory)?;
 
         let progress =
-            DownloadProgress::new(items.len() as u64, build_illust_progress_totals(items));
+            DownloadProgress::new(total_outputs(plans), build_illust_progress_totals(plans));
+        let tasks = build_download_tasks(plans);
 
-        let outcomes = stream::iter(items.iter().cloned().map(|item| {
+        let outcomes = stream::iter(tasks.into_iter().map(|task| {
             let downloader = self.clone();
             let progress = progress.clone();
 
             async move {
-                let illust_id = item.illust_id.clone();
-                let outcome = downloader.download_one(item, progress.clone()).await;
-                let failed = match &outcome {
-                    DownloadOutcome::Downloaded(_) => false,
-                    DownloadOutcome::Skipped => false,
-                    DownloadOutcome::Failed(_) => true,
-                };
+                let illust_id = task.illust_id().to_string();
+                let outcome = downloader.download_one(task, progress.clone()).await;
+                let failed = matches!(outcome, DownloadOutcome::Failed(_));
                 progress.record_unit_completion(&illust_id, failed);
                 outcome
             }
@@ -105,6 +144,17 @@ impl Downloader {
     }
 
     async fn download_one(
+        &self,
+        task: DownloadTask,
+        progress: DownloadProgress,
+    ) -> DownloadOutcome {
+        match task {
+            DownloadTask::Image(item) => self.download_image(item, progress).await,
+            DownloadTask::Ugoira(plan) => self.download_ugoira(plan, progress).await,
+        }
+    }
+
+    async fn download_image(
         &self,
         item: DownloadItem,
         progress: DownloadProgress,
@@ -162,6 +212,58 @@ impl Downloader {
             }
         }
     }
+
+    async fn download_ugoira(
+        &self,
+        plan: UgoiraDownloadPlan,
+        progress: DownloadProgress,
+    ) -> DownloadOutcome {
+        if file_exists_and_nonempty(&plan.target_path) {
+            return DownloadOutcome::Skipped;
+        }
+
+        let source_url = plan.source_url.clone();
+        let target_path = plan.target_path.clone();
+        let illust_id = plan.illust_id.clone();
+        let download_result = async {
+            let progress_observer = Arc::new(move |bytes| {
+                progress.record_downloaded_bytes(bytes);
+            });
+            download_ugoira_with_progress(self.session.as_ref(), &plan, Some(progress_observer))
+                .await
+        }
+        .await;
+
+        match download_result {
+            Ok(bytes) => DownloadOutcome::Downloaded(bytes),
+            Err(UgoiraDownloadError { stage, error }) => {
+                warn!("下载动图失败 {source_url}: {error}");
+                DownloadOutcome::Failed(FailureRecord::from_report(
+                    self.options.mode,
+                    stage,
+                    Some(illust_id),
+                    Some(source_url),
+                    Some(target_path.to_string_lossy().into_owned()),
+                    &error,
+                ))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DownloadTask {
+    Image(DownloadItem),
+    Ugoira(UgoiraDownloadPlan),
+}
+
+impl DownloadTask {
+    fn illust_id(&self) -> &str {
+        match self {
+            Self::Image(item) => &item.illust_id,
+            Self::Ugoira(plan) => &plan.illust_id,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,12 +273,37 @@ enum DownloadOutcome {
     Failed(FailureRecord),
 }
 
-fn build_illust_progress_totals(items: &[DownloadItem]) -> Vec<(String, u64)> {
+fn build_download_tasks(plans: &[ArtworkDownloadPlan]) -> Vec<DownloadTask> {
+    let mut tasks = Vec::new();
+    for plan in plans {
+        match plan {
+            ArtworkDownloadPlan::Images(plan) => {
+                tasks.extend(plan.image_urls.iter().cloned().map(|image_url| {
+                    DownloadTask::Image(DownloadItem {
+                        illust_id: plan.illust_id.clone(),
+                        image_url,
+                        target_dir: plan.target_dir.clone(),
+                    })
+                }));
+            }
+            ArtworkDownloadPlan::Ugoira(plan) => {
+                tasks.push(DownloadTask::Ugoira(plan.clone()));
+            }
+        }
+    }
+    tasks
+}
+
+fn build_illust_progress_totals(plans: &[ArtworkDownloadPlan]) -> Vec<(String, u64)> {
     let mut totals = BTreeMap::<String, u64>::new();
-    for item in items {
-        *totals.entry(item.illust_id.clone()).or_default() += 1;
+    for plan in plans {
+        *totals.entry(plan.illust_id().to_string()).or_default() += plan.output_count();
     }
     totals.into_iter().collect()
+}
+
+fn total_outputs(plans: &[ArtworkDownloadPlan]) -> u64 {
+    plans.iter().map(ArtworkDownloadPlan::output_count).sum()
 }
 
 fn file_exists_and_nonempty(path: &Path) -> bool {
@@ -187,31 +314,51 @@ fn file_exists_and_nonempty(path: &Path) -> bool {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::downloader::{build_illust_progress_totals, image::DownloadItem};
+    use crate::{
+        downloader::{
+            ArtworkDownloadPlan, ImageArtworkPlan, UgoiraDownloadPlan, build_illust_progress_totals,
+        },
+        pixiv::selector::{UgoiraFrame, UgoiraMetadata},
+    };
 
     #[test]
     fn illust_progress_totals_are_grouped_by_illust() {
-        let items = vec![
-            DownloadItem {
+        let plans = vec![
+            ArtworkDownloadPlan::Images(ImageArtworkPlan {
                 illust_id: "200".to_string(),
-                image_url: "https://i.pximg.net/200_p0.png".to_string(),
+                image_urls: vec![
+                    "https://i.pximg.net/200_p0.png".to_string(),
+                    "https://i.pximg.net/200_p1.png".to_string(),
+                ],
                 target_dir: PathBuf::from("/tmp/200"),
-            },
-            DownloadItem {
+            }),
+            ArtworkDownloadPlan::Images(ImageArtworkPlan {
                 illust_id: "100".to_string(),
-                image_url: "https://i.pximg.net/100_p0.png".to_string(),
+                image_urls: vec!["https://i.pximg.net/100_p0.png".to_string()],
                 target_dir: PathBuf::from("/tmp/100"),
-            },
-            DownloadItem {
-                illust_id: "200".to_string(),
-                image_url: "https://i.pximg.net/200_p1.png".to_string(),
-                target_dir: PathBuf::from("/tmp/200"),
-            },
+            }),
+            ArtworkDownloadPlan::Ugoira(UgoiraDownloadPlan {
+                illust_id: "300".to_string(),
+                source_url: "https://i.pximg.net/300.zip".to_string(),
+                target_path: PathBuf::from("/tmp/300/300.gif"),
+                metadata: UgoiraMetadata {
+                    original_src: "https://i.pximg.net/300.zip".to_string(),
+                    mime_type: Some("image/png".to_string()),
+                    frames: vec![UgoiraFrame {
+                        file: "000000.png".to_string(),
+                        delay_ms: 60,
+                    }],
+                },
+            }),
         ];
 
         assert_eq!(
-            build_illust_progress_totals(&items),
-            vec![("100".to_string(), 1), ("200".to_string(), 2)]
+            build_illust_progress_totals(&plans),
+            vec![
+                ("100".to_string(), 1),
+                ("200".to_string(), 2),
+                ("300".to_string(), 1)
+            ]
         );
     }
 }

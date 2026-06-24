@@ -25,6 +25,9 @@ regex = "1"
 dirs-next = "2"
 url = "2"
 futures = "0.3"
+gif = "0.14"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 wiremock = "0.6"

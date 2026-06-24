@@ -54,6 +54,24 @@ fn session(
     Arc::new(PixivNetSession::new_with_base_url(options, credential, base_url).unwrap())
 }
 
+async fn mount_illust_detail(server: &MockServer, illust_id: &str) {
+    Mock::given(method("GET"))
+        .and(path(format!("/ajax/illust/{illust_id}")))
+        .and(header(
+            "referer",
+            format!("{}/artworks/{illust_id}", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("illust_detail.json")))
+        .mount(server)
+        .await;
+}
+
+async fn mount_illust_details(server: &MockServer, illust_ids: &[&str]) {
+    for illust_id in illust_ids {
+        mount_illust_detail(server, illust_id).await;
+    }
+}
+
 #[tokio::test]
 async fn user_crawler_can_download_images_with_mock_server() {
     let server = MockServer::start().await;
@@ -71,6 +89,7 @@ async fn user_crawler_can_download_images_with_mock_server() {
         )
         .mount(&server)
         .await;
+    mount_illust_details(&server, &["123456", "123457", "223456"]).await;
 
     Mock::given(method("GET"))
         .and(path("/ajax/illust/123456/pages"))
@@ -170,6 +189,7 @@ async fn illust_crawler_can_download_single_work() {
     let server = MockServer::start().await;
     let temp = tempdir().unwrap();
     let base_url = server.uri().parse().unwrap();
+    mount_illust_detail(&server, "123456").await;
 
     Mock::given(method("GET"))
         .and(path("/ajax/illust/123456/pages"))
@@ -316,6 +336,7 @@ async fn user_crawler_skips_existing_file() {
         })))
         .mount(&server)
         .await;
+    mount_illust_detail(&server, "123456").await;
 
     Mock::given(method("GET"))
         .and(path("/ajax/illust/123456/pages"))
@@ -361,6 +382,7 @@ async fn downloader_recovers_from_stale_part_file() {
     let output_dir = temp.path().join("123456");
     fs::create_dir_all(&output_dir).unwrap();
     fs::write(output_dir.join("123456_p0.png.part"), b"stale").unwrap();
+    mount_illust_detail(&server, "123456").await;
 
     Mock::given(method("GET"))
         .and(path("/ajax/illust/123456/pages"))
@@ -414,6 +436,7 @@ async fn keyword_crawler_can_download_search_results() {
         .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("keyword_search.json")))
         .mount(&server)
         .await;
+    mount_illust_details(&server, &["146185119", "146185709"]).await;
 
     for illust_id in ["146185119", "146185709"] {
         Mock::given(method("GET"))
@@ -466,6 +489,7 @@ async fn ranking_crawler_can_download_ranked_results() {
         .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("ranking.json")))
         .mount(&server)
         .await;
+    mount_illust_details(&server, &["146109718", "146135045"]).await;
 
     for illust_id in ["146109718", "146135045"] {
         Mock::given(method("GET"))
@@ -521,6 +545,7 @@ async fn bookmark_crawler_can_download_bookmarks() {
         .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("bookmark.json")))
         .mount(&server)
         .await;
+    mount_illust_details(&server, &["146185119", "146185709"]).await;
 
     for illust_id in ["146185119", "146185709"] {
         Mock::given(method("GET"))
@@ -581,6 +606,7 @@ async fn bookmark_crawler_truncates_to_requested_count() {
         .respond_with(ResponseTemplate::new(200).set_body_json(read_fixture("bookmark.json")))
         .mount(&server)
         .await;
+    mount_illust_detail(&server, "146185709").await;
 
     Mock::given(method("GET"))
         .and(path("/ajax/illust/146185709/pages"))
@@ -717,6 +743,7 @@ async fn user_crawler_counts_partial_failures_without_failing_command() {
         })))
         .mount(&server)
         .await;
+    mount_illust_details(&server, &["123456", "123457"]).await;
 
     Mock::given(method("GET"))
         .and(path("/ajax/illust/123456/pages"))
