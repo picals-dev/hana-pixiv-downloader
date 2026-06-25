@@ -172,3 +172,11 @@
 ## [2026-06-23T09:55:45.894Z] lint
 - **Pages:** none
 - **Summary:** Lint: 0 issues (0 orphan, 0 stale, 0 broken, 0 contradictions)
+
+## [2026-06-25T08:00:25.023Z] add
+- **Pages:** picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md, picals-crawler-ugoira-gif-实现记录-2026-06-24.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试指南.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-返工收尾实现记录-2026-06-25.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-06-25T08:00:33.986Z] lint
+- **Pages:** picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 4 issues (0 orphan, 0 stale, 0 broken, 1 contradictions)

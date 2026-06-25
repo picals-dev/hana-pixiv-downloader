@@ -2,9 +2,9 @@
 title: "Picals Crawler 产品设计文档"
 tags: ["product", "design", "requirements"]
 created: 2026-06-16T00:00:00.000Z
-updated: 2026-06-23T09:19:53.000Z
+updated: 2026-06-25T00:00:00.000Z
 sources: ["_notes/nea/product-design.md"]
-links: ["picals-crawler-技术设计文档.md", "picals-crawler-项目理解基线.md", "typescript-原项目实现观察.md", "picals-crawler-产品设计附录-交互与路线图.md", "picals-crawler-ux-优化执行记录-2026-06-21.md"]
+links: ["picals-crawler-技术设计文档.md", "picals-crawler-项目理解基线.md", "typescript-原项目实现观察.md", "picals-crawler-产品设计附录-交互与路线图.md", "picals-crawler-ux-优化执行记录-2026-06-21.md", "picals-crawler-返工收尾实现记录-2026-06-25.md"]
 category: product
 confidence: high
 schemaVersion: 1
@@ -12,9 +12,9 @@ schemaVersion: 1
 
 # Picals-Crawler 产品设计文档
 
-> 版本：v0.3.0-draft
-> 最后更新：2026-06-21
-> 状态：UX 优化主链已落地并通过验证
+> 版本：v0.4.0-draft
+> 最后更新：2026-06-25
+> 状态：主链路、ugoira GIF 与 2026-06-25 Code Review 返工均已落地并通过验证
 
 ---
 
@@ -55,6 +55,7 @@ schemaVersion: 1
 | 命令 | 功能 | 优先级 |
 |---|---|---|
 | `picals-crawler setup` | 交互式认证引导 + 配置初始化 | P0 |
+| `picals-crawler download <pixiv_url>` | 直接粘贴 Pixiv URL 执行下载 | P0 |
 | `picals-crawler download user <id>` | 下载指定画师的全部作品 | P0 |
 | `picals-crawler download keyword <query>` | 下载包含指定关键词的搜索结果 | P1 |
 | `picals-crawler download ranking` | 下载排行榜作品 | P1 |
@@ -98,6 +99,7 @@ picals-crawler download user 12345678 --to ~/wallpaper/miku/
 - URL 模式：用户直接从浏览器复制粘贴，零认知成本
 - 默认下载全部作品，按时间降序排列
 - 当前实现使用 `user_root/{userId}/{illustId}/illustId_pn.ext`
+- 若批次中包含 ugoira，当前实现会在对应作品目录下产出 `illustId.gif`
 - 下载过程中显示进度条、速度、ETA
 
 #### `picals-crawler download keyword <query>`
@@ -108,21 +110,22 @@ picals-crawler download keyword "オリジナル 女の子" --count 100 --sort d
 ```
 
 - 支持多关键词（空格分隔）
-- 选项：`--count` 数量、`--sort` 排序（date_desc / date_asc）、`--r18` 模式切换、`--no-ai`
+- 选项：`--count` 数量、`--sort` 排序（仅 `date_desc / date_asc`）、`--r18` 模式切换、`--no-ai`
 - 默认：全部结果、按时间降序、安全模式
 - 当前实现使用 `keyword_root/{规范化关键词}/{illustId}/illustId_pn.ext`
+- 若搜索结果包含 ugoira，当前实现会在对应作品目录下产出 `illustId.gif`
 
 #### `picals-crawler download ranking`
 
 ```
 picals-crawler download ranking
-picals-crawler download ranking --mode weekly --count 100
-picals-crawler download ranking --mode daily_r18
+picals-crawler download ranking weekly --count 100
+picals-crawler download ranking daily_r18
 ```
 
 - 排行模式：daily / weekly / monthly / daily_r18 / weekly_r18 / male / female
 - 默认：daily（今日插图榜）；若未指定 `--count`，当前实现按“下载全部抓到的结果”处理
-- 当前实现仅支持 illust 下载，不包含 manga / ugoira 专项模式
+- 当前实现不提供额外的 manga / ugoira 专项模式，但榜单结果若包含 ugoira 仍会产出 `illustId.gif`
 - 当前实现使用 `ranking_root/{mode}/{illustId}/illustId_pn.ext`
 
 #### `picals-crawler download illust <id>`
@@ -133,7 +136,8 @@ picals-crawler download illust 12345678
 
 - 下载单张作品的所有图片（Pixiv 上多图作品用 `_p0`、`_p1` 等区分）
 - 适用于只想下载特定一张图的场景
-- 当前实现使用 `illust_root/{illustId}/illustId_pn.ext`
+- 静态作品当前使用 `illust_root/{illustId}/illustId_pn.ext`
+- ugoira 作品当前使用 `illust_root/{illustId}/{illustId}.gif`
 
 #### `picals-crawler download bookmark`
 
@@ -145,34 +149,75 @@ picals-crawler download bookmark --count 200
 - 下载自己收藏的作品
 - 依赖 setup 中保存的认证元数据：`PHPSESSID + userId`
 - 当前实现使用 `bookmark_root/{当前账号userId}/{illustId}/illustId_pn.ext`
+- 若收藏中包含 ugoira，当前实现会在对应作品目录下产出 `illustId.gif`
 
-### 3.3 全局选项
+#### `picals-crawler download <pixiv_url>`
+
+```
+picals-crawler download "https://www.pixiv.net/users/12345678"
+picals-crawler download "https://www.pixiv.net/artworks/12345678"
+```
+
+- 允许直接粘贴 Pixiv 用户页、作品页或标签搜索页 URL
+- 命令会自动分发到 `user / illust / keyword` 对应主链路
+- 目标是把“复制浏览器地址栏 → 回终端粘贴”作为最低认知成本入口
+
+### 3.3 全局开关
 
 | 选项 | 说明 |
 |---|---|
-| `--to <path>` | 覆盖下载目录 |
-| `--proxy <url>` | 代理地址（如 `socks5://127.0.0.1:1080`），也支持 `HTTPS_PROXY` 环境变量 |
-| `--dry-run` | 只列出将要下载的内容，不实际下载 |
+| `--verbose` | 打开详细日志；默认日志级别切到 `debug` |
+
+**当前 `--verbose` 合同**：
+
+- `--verbose` 是当前唯一全局 CLI 开关。
+- 未设置 `RUST_LOG` 时：默认日志级别为 `info`；带 `--verbose` 时切到 `debug`。
+- 若显式设置 `RUST_LOG`，其优先级高于 `--verbose` 默认值。
+
+### 3.4 下载命令通用选项
+
+| 选项 | 说明 | 适用范围 |
+|---|---|---|
+| `--to <path>` | 覆盖当前下载模式对应的 root 目录 | 所有下载命令 |
+| `--proxy <url>` | 代理地址，也支持 `HTTPS_PROXY` 环境变量 | 所有下载命令 |
+| `--dry-run` | 只列出将要下载的内容，不实际下载 | 所有下载命令 |
+| `--count <n>` | 限制本次下载数量，`0` 表示全部 | 所有下载命令 |
+| `--sort <date_desc|date_asc>` | 选择时间排序 | `user / keyword / illust / bookmark` |
+| `--no-ai` | 排除 AI 作品 | `user / keyword / illust / bookmark` |
+| `--concurrent <n>` | 并发下载数 | 所有下载命令 |
+| `--timeout <seconds>` | 单次请求超时时间 | 所有下载命令 |
+| `--retry <n>` | 网络错误重试次数 | 所有下载命令 |
+| `--with-tags` / `--no-tags` | 控制是否导出 `tags.json` | 所有下载命令 |
 
 **当前 `--to` 合同**：
 
 - `--to` 覆盖的是当前模式对应的 root，而不是最终图片目录。
 - 最终输出仍会追加该模式自己的 context / illust 目录层级。
 
-### 3.4 下载配置
+### 3.5 模式专用选项
 
-每个下载命令支持以下选项（有默认值，可在 `config.toml` 中预设）：
+- `download keyword`：
+  - 额外支持 `--r18`，把搜索模式切到 R-18。
+- `download ranking`：
+  - 使用位置参数 `daily / weekly / monthly / male / female / daily_r18 / weekly_r18` 选择榜单。
+  - 不再提供通用 `--sort`、`--no-ai` 或通用 `r18` 切换。
+
+### 3.6 下载配置
+
+默认下载配置项包含以下字段（有默认值，可在 `config.toml` 中预设；具体是否允许通过 CLI 覆盖取决于命令模式）：
 
 | 选项 | 默认值 | 说明 |
 |---|---|---|
 | `--count` | `0`（全部） | 下载数量 |
-| `--sort` | `date_desc` | 排序：date_desc / date_asc |
+| `--sort` | `date_desc` | 排序：仅支持 `date_desc / date_asc` |
 | `--r18` | `false` | 是否包含 R-18 作品 |
 | `--no-ai` | `false` | 是否排除 AI 作品 |
 | `--concurrent` | `8` | 并发下载数 |
+| `--timeout` | `30` | 单次请求超时（秒） |
+| `--retry` | `3` | 网络错误重试次数 |
 | `--with-tags` | `false` | 是否同时导出 tags.json |
 
-### 3.5 配置可见性
+### 3.7 配置可见性
 
 - `config show` 当前统一输出：
   - `auth.phpsessid`
@@ -189,6 +234,7 @@ picals-crawler download bookmark --count 200
 - 当前交互设计的稳定结论是：
   - `setup` 保持多步向导，明文展示凭据并在过程中自动探测 `userId`
   - 日常下载体验强调“低认知成本 + 进度可视化 + 可重试补救”
+  - `--verbose` 只控制日志可见性，不改变下载语义
   - 断点续传语义已收敛为“重新执行同一条命令即可”
   - 失败补救闭环固定为 `auto-replay + manifest + retry`
 
@@ -270,17 +316,17 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 - **性能**：单作品下载 < 5s（正常网络），100 幅作品批量下载 < 5min（8 并发）
 - **可靠性**：统一请求层对 `429 / 5xx / timeout` 做收敛；失败项持久化为 manifest，并可通过 `retry` 回放
 - **兼容性**：macOS (aarch64 + x86_64)、Windows (x86_64)、Linux (x86_64)
-- **安全性**：凭据文件权限 600，敏感信息不在日志中输出
+- **安全性**：凭据文件权限 600，敏感信息不在日志中输出；`--verbose` 允许输出请求级调试日志，但不应打印认证凭据
 - **可维护性**：Pixiv API 变更时，只需修改 selector 模块
 
 ---
 
 ## 九、明确不做
 
-以下功能**明确不在 v1 范围内**：
+以下功能**明确不在当前范围内**：
 
 - ❌ Web UI / 浏览器扩展
-- ❌ Ugoira 动图转 GIF/MP4（v1.1 考虑）
+- ❌ Ugoira 多格式导出（MP4 / WebM / APNG）
 - ❌ 多账号管理
 - ❌ 自定义文件名模板（v1.1 考虑）
 - ❌ 定时下载任务
