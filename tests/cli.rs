@@ -11,3 +11,5 @@ mod parse;
 mod retry;
 #[path = "cli/ugoira.rs"]
 mod ugoira;
+#[path = "cli/verbose.rs"]
+mod verbose;

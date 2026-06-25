@@ -13,7 +13,7 @@ use std::{
 };
 
 use eyre::eyre;
-use log::warn;
+use log::{debug, warn};
 use reqwest::header::REFERER;
 use serde_json::Value;
 use url::Url;
@@ -109,7 +109,11 @@ impl Default for RuntimeHooks {
 }
 
 impl PixivNetSessionBuilder {
-    pub fn new(options: ResolvedDownloadOptions, credential: Credential, base_url: Url) -> Self {
+    pub(crate) fn new(
+        options: ResolvedDownloadOptions,
+        credential: Credential,
+        base_url: Url,
+    ) -> Self {
         Self {
             options,
             credential,
@@ -129,11 +133,6 @@ impl PixivNetSessionBuilder {
 }
 
 impl PixivNetSession {
-    pub fn new(options: ResolvedDownloadOptions, credential: Credential) -> AppResult<Self> {
-        let base_url = resolve_base_url(None)?;
-        Self::new_with_base_url(options, credential, base_url)
-    }
-
     pub fn new_with_base_url(
         options: ResolvedDownloadOptions,
         credential: Credential,
@@ -166,11 +165,12 @@ impl PixivNetSession {
         PixivNetSessionBuilder::new(options, credential, base_url)
     }
 
-    pub fn session_id(&self) -> u64 {
+    #[cfg(test)]
+    pub(crate) fn session_id(&self) -> u64 {
         self.session_id
     }
 
-    pub async fn fetch_current_user_homepage(&self) -> AppResult<CurrentUserPage> {
+    pub(crate) async fn fetch_current_user_homepage(&self) -> AppResult<CurrentUserPage> {
         let spec = self.catalog.homepage()?;
         let (headers, body) = self
             .execute(spec, |response| async move {
@@ -183,27 +183,27 @@ impl PixivNetSession {
             .parse_current_user_page(extract_header_user_id(&headers), body)
     }
 
-    pub async fn fetch_user_profile_all(&self, user_id: &str) -> AppResult<Value> {
+    pub(crate) async fn fetch_user_profile_all(&self, user_id: &str) -> AppResult<Value> {
         let spec = self.catalog.user_profile_all(user_id)?;
         self.get_json(spec).await
     }
 
-    pub async fn fetch_illust_pages(&self, illust_id: &str) -> AppResult<Value> {
+    pub(crate) async fn fetch_illust_pages(&self, illust_id: &str) -> AppResult<Value> {
         let spec = self.catalog.illust_pages(illust_id)?;
         self.get_json(spec).await
     }
 
-    pub async fn fetch_illust_detail(&self, illust_id: &str) -> AppResult<Value> {
+    pub(crate) async fn fetch_illust_detail(&self, illust_id: &str) -> AppResult<Value> {
         let spec = self.catalog.illust_detail(illust_id)?;
         self.get_json(spec).await
     }
 
-    pub async fn fetch_ugoira_meta(&self, illust_id: &str) -> AppResult<Value> {
+    pub(crate) async fn fetch_ugoira_meta(&self, illust_id: &str) -> AppResult<Value> {
         let spec = self.catalog.ugoira_meta(illust_id)?;
         self.get_json(spec).await
     }
 
-    pub async fn fetch_keyword_page(
+    pub(crate) async fn fetch_keyword_page(
         &self,
         keyword: &str,
         order: &str,
@@ -217,12 +217,12 @@ impl PixivNetSession {
         self.get_json(spec).await
     }
 
-    pub async fn fetch_ranking_page(&self, mode: &str, page: usize) -> AppResult<Value> {
+    pub(crate) async fn fetch_ranking_page(&self, mode: &str, page: usize) -> AppResult<Value> {
         let spec = self.catalog.ranking_page(mode, page)?;
         self.get_json(spec).await
     }
 
-    pub async fn fetch_bookmark_page(
+    pub(crate) async fn fetch_bookmark_page(
         &self,
         user_id: &str,
         offset: usize,
@@ -232,7 +232,8 @@ impl PixivNetSession {
         self.get_json(spec).await
     }
 
-    pub async fn download_original_image(
+    #[cfg(test)]
+    pub(crate) async fn download_original_image(
         &self,
         image_url: &str,
         illust_id: &str,
@@ -254,7 +255,7 @@ impl PixivNetSession {
             .await
     }
 
-    pub async fn download_ugoira_archive(
+    pub(crate) async fn download_ugoira_archive(
         &self,
         image_url: &str,
         illust_id: &str,
@@ -544,6 +545,14 @@ impl PixivNetSession {
                 attempts,
                 reason
             ),
+            NetEvent::Attempt {
+                kind, attempt, url, ..
+            } => debug!(
+                "request.attempt class={} attempt={} url={}",
+                kind.label(),
+                attempt,
+                url
+            ),
             _ => {}
         }
 
@@ -553,7 +562,7 @@ impl PixivNetSession {
     }
 }
 
-pub fn resolve_base_url(explicit_base_url: Option<&Url>) -> AppResult<Url> {
+pub(crate) fn resolve_base_url(explicit_base_url: Option<&Url>) -> AppResult<Url> {
     if let Some(base_url) = explicit_base_url {
         return Ok(base_url.clone());
     }
