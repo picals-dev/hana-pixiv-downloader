@@ -1,4 +1,4 @@
-use picals_crawler::{
+use hana_pixiv_downloader::{
     config::{DownloadMode, SortOrder},
     failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
 };
@@ -9,7 +9,7 @@ fn failure_manifest_roundtrip_preserves_public_contract() {
         ReplayCommand::Illust {
             illust_id: "123456".to_string(),
             options: ReplayOptions {
-                directory: "/tmp/picals".to_string(),
+                directory: "/tmp/hpd".to_string(),
                 count: 2,
                 sort: SortOrder::DateDesc,
                 r18: false,
@@ -27,7 +27,7 @@ fn failure_manifest_roundtrip_preserves_public_contract() {
             stage: FailureStage::Download,
             illust_id: Some("123456".to_string()),
             source_url: Some("https://example.com/123456_p0.png".to_string()),
-            target_path: Some("/tmp/picals/123456/123456_p0.png".to_string()),
+            target_path: Some("/tmp/hpd/123456/123456_p0.png".to_string()),
             error_kind: "timeout".to_string(),
             error_message: "timeout".to_string(),
             retryable: true,
@@ -50,7 +50,7 @@ fn legacy_image_url_field_is_still_accepted() {
             "kind": "illust",
             "illust_id": "123456",
             "options": {
-                "directory": "/tmp/picals",
+                "directory": "/tmp/hpd",
                 "count": 1,
                 "sort": "date_desc",
                 "r18": false,
@@ -68,7 +68,7 @@ fn legacy_image_url_field_is_still_accepted() {
             "stage": "download",
             "illust_id": "123456",
             "image_url": "https://example.com/123456_p0.png",
-            "target_path": "/tmp/picals/123456/123456_p0.png",
+            "target_path": "/tmp/hpd/123456/123456_p0.png",
             "error_kind": "timeout",
             "error_message": "timeout",
             "retryable": true

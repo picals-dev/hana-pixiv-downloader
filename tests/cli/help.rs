@@ -3,7 +3,7 @@ use predicates::prelude::*;
 
 #[test]
 fn binary_help_shows_download_subcommand() {
-    Command::cargo_bin("picals-crawler")
+    Command::cargo_bin("hpd")
         .unwrap()
         .arg("--help")
         .assert()
@@ -13,7 +13,7 @@ fn binary_help_shows_download_subcommand() {
 
 #[test]
 fn ranking_help_does_not_expose_sort_r18_or_no_ai() {
-    let output = Command::cargo_bin("picals-crawler")
+    let output = Command::cargo_bin("hpd")
         .unwrap()
         .args(["download", "ranking", "--help"])
         .assert()
@@ -30,7 +30,7 @@ fn ranking_help_does_not_expose_sort_r18_or_no_ai() {
 
 #[test]
 fn ranking_cli_rejects_sort_flag_at_parse_time() {
-    Command::cargo_bin("picals-crawler")
+    Command::cargo_bin("hpd")
         .unwrap()
         .args(["download", "ranking", "--sort", "date_desc"])
         .assert()
@@ -40,7 +40,7 @@ fn ranking_cli_rejects_sort_flag_at_parse_time() {
 
 #[test]
 fn ranking_cli_rejects_legacy_mode_flag() {
-    Command::cargo_bin("picals-crawler")
+    Command::cargo_bin("hpd")
         .unwrap()
         .args(["download", "ranking", "--mode", "daily"])
         .assert()

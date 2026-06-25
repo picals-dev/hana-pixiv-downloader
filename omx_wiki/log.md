@@ -1,5 +1,9 @@
 # Wiki Log
 
+## [2026-06-26T00:00:00.000Z] add
+- **Pages:** hana-pixiv-downloader-重命名收口实现记录-2026-06-26.md, index.md
+- **Summary:** Synced wiki with the code-level rename cutoff to `hana-pixiv-downloader` / `hpd`, including external surface renames and release packaging updates
+
 ## [2026-06-24T08:56:27.000Z] add
 - **Pages:** picals-crawler-ugoira-gif-实现记录-2026-06-24.md, picals-crawler-技术设计文档.md, index.md
 - **Summary:** Synced wiki with completed ugoira GIF integration, asset-planning architecture, replay/manifest contract changes, and implementation record

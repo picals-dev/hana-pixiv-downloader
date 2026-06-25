@@ -398,8 +398,8 @@ pub(crate) async fn finalize_download_result(
         let manifest_path = manifest.save()?;
         println!("仍有 {} 个失败项未恢复。", result.failure_records.len());
         println!("失败清单已保存到: {}", manifest_path.display());
-        println!("可使用以下命令继续补拉：");
-        println!("  picals-crawler retry {}", manifest_path.display());
+        println!("可使用以下命令继续重试：");
+        println!("  hpd retry {}", manifest_path.display());
     }
 
     Ok(result)
@@ -479,7 +479,7 @@ mod tests {
         let temp = tempdir().unwrap();
         let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path());
         let server = MockServer::start().await;
-        let _base_url = EnvVarGuard::set("PICALS_PIXIV_BASE_URL", server.uri());
+        let _base_url = EnvVarGuard::set("HPD_PIXIV_BASE_URL", server.uri());
 
         Mock::given(method("GET"))
             .and(path("/img-original/img/2024/01/02/03/04/05/123456_p0.png"))

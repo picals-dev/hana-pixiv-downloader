@@ -111,7 +111,7 @@ impl DownloadProgress {
         let stop_refresh = Arc::clone(&self.stop_refresh);
 
         thread::Builder::new()
-            .name("picals-progress".to_string())
+            .name("hpd-progress".to_string())
             .spawn(move || {
                 loop {
                     if stop_refresh.load(Ordering::Relaxed) || Arc::strong_count(&state) == 1 {

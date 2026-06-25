@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
-use picals_crawler::auth::Credential;
+use hana_pixiv_downloader::auth::Credential;
 use tempfile::{TempDir, tempdir};
 use tokio::sync::MutexGuard;
 use wiremock::MockServer;
@@ -36,14 +36,14 @@ impl CliTestContext {
     }
 
     pub fn command(&self) -> Command {
-        let mut command = Command::cargo_bin("picals-crawler").unwrap();
+        let mut command = Command::cargo_bin("hpd").unwrap();
         command
             .env("HOME", self.home_dir())
             .env("XDG_CONFIG_HOME", self.xdg_config_home())
-            .env("PICALS_PIXIV_BASE_URL", &self.base_url)
-            .env_remove("PICALS_DOWNLOAD_SORT")
-            .env_remove("PICALS_DOWNLOAD_AI")
-            .env_remove("PICALS_DOWNLOAD_R18");
+            .env("HPD_PIXIV_BASE_URL", &self.base_url)
+            .env_remove("HPD_DOWNLOAD_SORT")
+            .env_remove("HPD_DOWNLOAD_AI")
+            .env_remove("HPD_DOWNLOAD_R18");
         command
     }
 

@@ -19,7 +19,7 @@ use crate::{
 
 use super::UgoiraDownloadPlan;
 
-const WORKSPACE_DIR: &str = ".picals-workspace";
+const WORKSPACE_DIR: &str = ".hpd-workspace";
 const UGOIRA_ARCHIVE_NAME: &str = "source.zip";
 const UGOIRA_TEMP_GIF_NAME: &str = "output.gif.part";
 

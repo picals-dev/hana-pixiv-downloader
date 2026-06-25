@@ -1,4 +1,4 @@
-use picals_crawler::pixiv::selector::{
+use hana_pixiv_downloader::pixiv::selector::{
     count_user_illust_ids, select_bookmark_illust_ids, select_bookmark_total,
     select_current_user_id, select_illust_tags, select_illust_type, select_keyword_illust_ids,
     select_keyword_total, select_page_original_urls, select_ranking_illust_ids,
@@ -42,7 +42,7 @@ fn select_regular_illust_type_from_detail_fixture() {
     let value = read_fixture("illust_detail.json");
     assert_eq!(
         select_illust_type(&value).unwrap(),
-        picals_crawler::pixiv::selector::IllustType::Image
+        hana_pixiv_downloader::pixiv::selector::IllustType::Image
     );
 }
 

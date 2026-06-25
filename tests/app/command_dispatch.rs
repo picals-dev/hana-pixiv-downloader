@@ -4,7 +4,7 @@ use std::{
 };
 
 use clap::Parser;
-use picals_crawler::{
+use hana_pixiv_downloader::{
     auth::Credential,
     cli::Cli,
     commands,
@@ -67,7 +67,7 @@ async fn ranking_rejects_non_default_values_from_config() {
     config.download.sort = SortOrder::DateAsc;
     config.save().unwrap();
 
-    let cli = Cli::parse_from(["picals-crawler", "download", "ranking", "--dry-run"]);
+    let cli = Cli::parse_from(["hpd", "download", "ranking", "--dry-run"]);
     let error = commands::dispatch(cli).await.unwrap_err();
     assert!(format!("{error:#}").contains("download ranking 不支持自定义排序"));
 }
@@ -78,9 +78,9 @@ async fn ranking_rejects_ai_false_from_env() {
     let temp = tempdir().unwrap();
     let _config_home = set_config_home(temp.path());
     let _download_env = unset_download_env();
-    let _ai = EnvVarGuard::set("PICALS_DOWNLOAD_AI", "false");
+    let _ai = EnvVarGuard::set("HPD_DOWNLOAD_AI", "false");
 
-    let cli = Cli::parse_from(["picals-crawler", "download", "ranking", "--dry-run"]);
+    let cli = Cli::parse_from(["hpd", "download", "ranking", "--dry-run"]);
     let error = commands::dispatch(cli).await.unwrap_err();
     assert!(format!("{error:#}").contains("download ranking 不支持 AI 过滤开关"));
 }
@@ -93,7 +93,7 @@ async fn bookmark_requires_user_id_in_credential() {
     let _download_env = unset_download_env();
     Credential::new("cookie").unwrap().save().unwrap();
 
-    let cli = Cli::parse_from(["picals-crawler", "download", "bookmark"]);
+    let cli = Cli::parse_from(["hpd", "download", "bookmark"]);
     let error = commands::dispatch(cli).await.unwrap_err();
     assert!(format!("{error:#}").contains("缺少 userId"));
 }
@@ -123,7 +123,7 @@ async fn bookmark_dry_run_accepts_credential_with_user_id() {
         .mount(&server)
         .await;
 
-    let cli = Cli::parse_from(["picals-crawler", "download", "bookmark", "--dry-run"]);
+    let cli = Cli::parse_from(["hpd", "download", "bookmark", "--dry-run"]);
     commands::dispatch(cli).await.unwrap();
 }
 
@@ -133,9 +133,9 @@ async fn env_invalid_sort_returns_error() {
     let temp = tempdir().unwrap();
     let _config_home = set_config_home(temp.path());
     let _download_env = unset_download_env();
-    let _sort = EnvVarGuard::set("PICALS_DOWNLOAD_SORT", "popular_desc");
+    let _sort = EnvVarGuard::set("HPD_DOWNLOAD_SORT", "popular_desc");
 
-    let cli = Cli::parse_from(["picals-crawler", "download", "illust", "123"]);
+    let cli = Cli::parse_from(["hpd", "download", "illust", "123"]);
     let error = commands::dispatch(cli).await.unwrap_err();
     assert!(format!("{error:#}").contains("无效的排序值"));
 }
@@ -152,7 +152,7 @@ async fn retry_command_can_read_manifest_file() {
         ReplayCommand::Illust {
             illust_id: "123456".to_string(),
             options: ReplayOptions {
-                directory: "/tmp/picals/illust".to_string(),
+                directory: "/tmp/hpd/illust".to_string(),
                 count: 1,
                 sort: SortOrder::DateDesc,
                 r18: false,
@@ -166,11 +166,11 @@ async fn retry_command_can_read_manifest_file() {
             },
         },
         vec![FailureRecord {
-            mode: picals_crawler::config::DownloadMode::Illust,
+            mode: hana_pixiv_downloader::config::DownloadMode::Illust,
             stage: FailureStage::Download,
             illust_id: Some("123456".to_string()),
             source_url: Some("https://example.com/123456_p0.png".to_string()),
-            target_path: Some("/tmp/picals/illust/123456/123456_p0.png".to_string()),
+            target_path: Some("/tmp/hpd/illust/123456/123456_p0.png".to_string()),
             error_kind: "timeout".to_string(),
             error_message: "timeout".to_string(),
             retryable: true,
@@ -183,11 +183,7 @@ async fn retry_command_can_read_manifest_file() {
     )
     .unwrap();
 
-    let cli = Cli::parse_from([
-        "picals-crawler",
-        "retry",
-        manifest_path.to_string_lossy().as_ref(),
-    ]);
+    let cli = Cli::parse_from(["hpd", "retry", manifest_path.to_string_lossy().as_ref()]);
     commands::dispatch(cli).await.unwrap();
 }
 
@@ -232,7 +228,7 @@ async fn retry_command_can_recover_retryable_download_record() {
             },
         },
         vec![FailureRecord {
-            mode: picals_crawler::config::DownloadMode::Illust,
+            mode: hana_pixiv_downloader::config::DownloadMode::Illust,
             stage: FailureStage::Download,
             illust_id: Some("123456".to_string()),
             source_url: Some(format!(
@@ -258,11 +254,7 @@ async fn retry_command_can_recover_retryable_download_record() {
     .unwrap();
 
     let _base_url = set_base_url(&server.uri());
-    let cli = Cli::parse_from([
-        "picals-crawler",
-        "retry",
-        manifest_path.to_string_lossy().as_ref(),
-    ]);
+    let cli = Cli::parse_from(["hpd", "retry", manifest_path.to_string_lossy().as_ref()]);
     commands::dispatch(cli).await.unwrap();
 
     assert!(
@@ -333,7 +325,7 @@ async fn auto_replay_reuses_same_session_instance_for_single_download_command() 
     }));
 
     let cli = Cli::parse_from([
-        "picals-crawler",
+        "hpd",
         "download",
         "user",
         "12345678",
@@ -404,7 +396,7 @@ async fn standalone_retry_uses_new_session_instance_but_same_net_stack() {
     }));
 
     let cli = Cli::parse_from([
-        "picals-crawler",
+        "hpd",
         "download",
         "illust",
         "111111",
@@ -439,7 +431,7 @@ async fn standalone_retry_uses_new_session_instance_but_same_net_stack() {
             },
         },
         vec![FailureRecord {
-            mode: picals_crawler::config::DownloadMode::Illust,
+            mode: hana_pixiv_downloader::config::DownloadMode::Illust,
             stage: FailureStage::Download,
             illust_id: Some("222222".to_string()),
             source_url: Some(format!("{}/img-original/222222_p0.png", server.uri())),
@@ -467,11 +459,7 @@ async fn standalone_retry_uses_new_session_instance_but_same_net_stack() {
         retry_observer_events.lock().unwrap().push(event);
     }));
 
-    let cli = Cli::parse_from([
-        "picals-crawler",
-        "retry",
-        manifest_path.to_string_lossy().as_ref(),
-    ]);
+    let cli = Cli::parse_from(["hpd", "retry", manifest_path.to_string_lossy().as_ref()]);
     commands::dispatch(cli).await.unwrap();
 
     let retry_session_ids = observed_session_ids(&retry_events.lock().unwrap());
@@ -513,7 +501,7 @@ async fn retry_command_skips_non_retryable_record() {
             },
         },
         vec![FailureRecord {
-            mode: picals_crawler::config::DownloadMode::Illust,
+            mode: hana_pixiv_downloader::config::DownloadMode::Illust,
             stage: FailureStage::Download,
             illust_id: Some("123456".to_string()),
             source_url: Some("https://example.invalid/123456_p0.png".to_string()),
@@ -535,11 +523,7 @@ async fn retry_command_skips_non_retryable_record() {
     )
     .unwrap();
 
-    let cli = Cli::parse_from([
-        "picals-crawler",
-        "retry",
-        manifest_path.to_string_lossy().as_ref(),
-    ]);
+    let cli = Cli::parse_from(["hpd", "retry", manifest_path.to_string_lossy().as_ref()]);
     commands::dispatch(cli).await.unwrap();
 
     assert!(

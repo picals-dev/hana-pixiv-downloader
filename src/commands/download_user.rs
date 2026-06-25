@@ -1,4 +1,4 @@
-//! `picals-crawler download user` 命令。
+//! `hpd download user` 命令。
 
 use std::sync::Arc;
 

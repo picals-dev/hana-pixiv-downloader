@@ -1,6 +1,6 @@
 # Wiki Index
 
-> 15 pages | Last updated: 2026-06-25T08:00:25.022Z
+> 16 pages | Last updated: 2026-06-26T00:00:00.000Z
 
 ## architecture
 
@@ -23,6 +23,7 @@
 
 ## session-log
 
+- [Hana Pixiv Downloader 重命名收口实现记录 2026-06-26](hana-pixiv-downloader-重命名收口实现记录-2026-06-26.md) — # Hana Pixiv Downloader 重命名收口实现记录 2026-06-26
 - [Picals Crawler net 层 SSOT 实现记录 2026-06-22](picals-crawler-net-层-ssot-实现记录-2026-06-22.md) — # Picals Crawler net 层 SSOT 实现记录 2026-06-22
 - [Picals Crawler ugoira GIF 实现记录 2026-06-24](picals-crawler-ugoira-gif-实现记录-2026-06-24.md) — # Picals Crawler ugoira GIF 实现记录 2026-06-24
 - [Picals Crawler UX 优化执行记录 2026-06-21](picals-crawler-ux-优化执行记录-2026-06-21.md) — # Picals Crawler UX 优化执行记录 2026-06-21

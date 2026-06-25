@@ -749,6 +749,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "hana-pixiv-downloader"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "comfy-table",
+ "dirs-next",
+ "env_logger",
+ "eyre",
+ "futures",
+ "gif",
+ "image",
+ "indicatif",
+ "inquire",
+ "jiff 0.1.29",
+ "log",
+ "predicates",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "toml",
+ "url",
+ "wiremock",
+ "zip",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1342,38 +1374,6 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
-
-[[package]]
-name = "picals-crawler"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "comfy-table",
- "dirs-next",
- "env_logger",
- "eyre",
- "futures",
- "gif",
- "image",
- "indicatif",
- "inquire",
- "jiff 0.1.29",
- "log",
- "predicates",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-test",
- "toml",
- "url",
- "wiremock",
- "zip",
-]
 
 [[package]]
 name = "pin-project-lite"

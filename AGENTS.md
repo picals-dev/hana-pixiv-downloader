@@ -1,6 +1,6 @@
 # AGENTS.md
 
-picals-crawler — 开箱即用的 Pixiv 图片下载 CLI 工具。Rust, edition 2024。
+hana-pixiv-downloader — 开箱即用的 Pixiv 图片下载 CLI 工具。Rust, edition 2024。
 
 ## 构建与测试
 
@@ -14,7 +14,7 @@ cargo check                          # 仅类型检查，无产物
 
 ## 测试路由
 
-- **凡是新增、迁移、重构、审查测试，或新增 `tests/support/*` / `src/test_support.rs` / `src/net/test_hook.rs` 相关测试 seam 时，必须先阅读**：[omx_wiki/picals-crawler-测试指南.md](/Users/nonhana/code_life/Picals/picals-crawler/omx_wiki/picals-crawler-测试指南.md)
+- **凡是新增、迁移、重构、审查测试，或新增 `tests/support/*` / `src/test_support.rs` / `src/net/test_hook.rs` 相关测试 seam 时，必须先阅读**：[omx_wiki 索引](./omx_wiki/index.md) 中的测试指南（历史文档文件名保留）
 - 该文档是当前仓库测试分层、support 边界、CLI harness、结构性禁止项与验证命令的 SSOT。
 - 如果历史测试写法、旧 session-log、或个人习惯与该文档冲突，以测试指南为准。
 

@@ -159,7 +159,7 @@ async fn illust_ugoira_download_writes_final_gif() {
     assert!(
         !output_root
             .join(UGOIRA_ID)
-            .join(".picals-workspace")
+            .join(".hpd-workspace")
             .exists()
     );
 }

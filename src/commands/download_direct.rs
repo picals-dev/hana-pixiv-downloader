@@ -1,4 +1,4 @@
-//! `picals-crawler download <pixiv-url>` 命令。
+//! `hpd download <pixiv-url>` 命令。
 
 use crate::{
     cli::download::{DirectDownloadArgs, IllustArgs, KeywordArgs, UserArgs},

@@ -1,4 +1,4 @@
-//! `picals-crawler setup` 命令。
+//! `hpd setup` 命令。
 
 use std::fmt;
 
@@ -92,19 +92,19 @@ pub(crate) async fn run() -> AppResult<()> {
 
     println!();
     println!("✅ 配置完成！你现在可以通过以下命令继续查看或修改：");
-    println!("  picals-crawler config show");
-    println!("  picals-crawler config set auth.phpsessid <PHPSESSID>");
-    println!("  picals-crawler config set auth.user_id <USER_ID>");
-    println!("  picals-crawler download user <画师ID>");
-    println!("  picals-crawler download <Pixiv URL>");
-    println!("  picals-crawler download bookmark");
-    println!("查看完整帮助: picals-crawler --help");
+    println!("  hpd config show");
+    println!("  hpd config set auth.phpsessid <PHPSESSID>");
+    println!("  hpd config set auth.user_id <USER_ID>");
+    println!("  hpd download user <画师ID>");
+    println!("  hpd download <Pixiv URL>");
+    println!("  hpd download bookmark");
+    println!("查看完整帮助: hpd --help");
 
     Ok(())
 }
 
 fn print_setup_intro() {
-    println!("🌸 欢迎使用 Picals Crawler！");
+    println!("🌸 欢迎使用 hana-pixiv-downloader！");
     println!();
     println!("在开始下载之前，需要先完成 Pixiv 认证。请按以下步骤操作：");
     println!();

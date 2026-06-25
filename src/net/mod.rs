@@ -1,4 +1,4 @@
-//! picals-crawler 网络基础设施
+//! hana-pixiv-downloader 网络基础设施
 
 mod catalog;
 mod client;

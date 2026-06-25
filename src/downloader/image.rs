@@ -50,7 +50,7 @@ mod tests {
     #[test]
     fn image_target_path_is_joined_correctly() {
         let url = "https://i.pximg.net/img-original/img/2024/01/02/03/04/05/123456_p0.png";
-        let path = target_path_for_image(Path::new("/tmp/picals"), url).unwrap();
+        let path = target_path_for_image(Path::new("/tmp/hpd"), url).unwrap();
         assert!(path.ends_with("123456_p0.png"));
     }
 
@@ -60,12 +60,12 @@ mod tests {
             illust_id: "123456".to_string(),
             image_url: "https://i.pximg.net/img-original/img/2024/01/02/03/04/05/123456_p0.png"
                 .to_string(),
-            target_dir: PathBuf::from("/tmp/picals/123456"),
+            target_dir: PathBuf::from("/tmp/hpd/123456"),
         };
 
         assert_eq!(
             item.target_path().unwrap(),
-            PathBuf::from("/tmp/picals/123456/123456_p0.png")
+            PathBuf::from("/tmp/hpd/123456/123456_p0.png")
         );
     }
 }

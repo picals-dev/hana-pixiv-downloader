@@ -1,10 +1,16 @@
 [package]
-name = "picals-crawler"
+name = "hana-pixiv-downloader"
 version = "0.1.0"
 edition = "2024"
 description = "开箱即用的 Pixiv 图片下载 CLI 工具"
 authors = ["nonhana"]
 license = "MIT"
+default-run = "hpd"
+autobins = false
+
+[[bin]]
+name = "hpd"
+path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "fs", "io-util"] }

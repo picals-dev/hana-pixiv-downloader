@@ -1,16 +1,16 @@
 use clap::Parser;
-use picals_crawler::cli::{Cli, Command, download::DownloadSubcommand};
+use hana_pixiv_downloader::cli::{Cli, Command, download::DownloadSubcommand};
 
 #[test]
 fn ranking_cli_accepts_positional_mode() {
-    let cli = Cli::parse_from(["picals-crawler", "download", "ranking", "daily"]);
+    let cli = Cli::parse_from(["hpd", "download", "ranking", "daily"]);
 
     match cli.command {
         Command::Download(download) => match download.target {
             Some(DownloadSubcommand::Ranking(args)) => {
                 assert_eq!(
                     args.mode,
-                    Some(picals_crawler::cli::download::RankingMode::Daily)
+                    Some(hana_pixiv_downloader::cli::download::RankingMode::Daily)
                 );
             }
             _ => panic!("expected ranking command"),
@@ -21,7 +21,7 @@ fn ranking_cli_accepts_positional_mode() {
 
 #[test]
 fn keyword_cli_still_uses_query_and_r18_only() {
-    let cli = Cli::parse_from(["picals-crawler", "download", "keyword", "初音ミク", "--r18"]);
+    let cli = Cli::parse_from(["hpd", "download", "keyword", "初音ミク", "--r18"]);
 
     match cli.command {
         Command::Download(download) => match download.target {
@@ -38,7 +38,7 @@ fn keyword_cli_still_uses_query_and_r18_only() {
 #[test]
 fn direct_download_cli_accepts_pixiv_url() {
     let cli = Cli::parse_from([
-        "picals-crawler",
+        "hpd",
         "download",
         "https://www.pixiv.net/users/12345678",
         "--dry-run",
@@ -60,7 +60,7 @@ fn direct_download_cli_accepts_pixiv_url() {
 #[test]
 fn direct_download_cli_accepts_encoded_tag_url() {
     let cli = Cli::parse_from([
-        "picals-crawler",
+        "hpd",
         "download",
         "https://www.pixiv.net/tags/%E5%88%9D%E9%9F%B3%E3%83%9F%E3%82%AF/artworks",
     ]);
@@ -79,7 +79,7 @@ fn direct_download_cli_accepts_encoded_tag_url() {
 
 #[test]
 fn retry_cli_accepts_manifest_path() {
-    let cli = Cli::parse_from(["picals-crawler", "retry", "/tmp/failures/demo.json"]);
+    let cli = Cli::parse_from(["hpd", "retry", "/tmp/failures/demo.json"]);
 
     match cli.command {
         Command::Retry(args) => {

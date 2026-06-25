@@ -1,6 +1,6 @@
 use clap::Parser;
 use eyre::Result;
-use picals_crawler::{cli::Cli, commands};
+use hana_pixiv_downloader::{cli::Cli, commands};
 
 #[tokio::main]
 async fn main() -> Result<()> {

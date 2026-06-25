@@ -1,4 +1,4 @@
-use picals_crawler::{
+use hana_pixiv_downloader::{
     config::{DownloadMode, SortOrder},
     failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
 };

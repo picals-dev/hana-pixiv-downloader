@@ -1,4 +1,4 @@
-//! `picals-crawler download keyword` 命令。
+//! `hpd download keyword` 命令。
 
 use crate::{
     cli::download::KeywordArgs,

@@ -1,4 +1,4 @@
-//! `picals-crawler config` 命令。
+//! `hpd config` 命令。
 
 use serde::Serialize;
 

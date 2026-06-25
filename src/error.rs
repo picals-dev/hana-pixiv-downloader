@@ -42,10 +42,10 @@ pub enum CrawlerError {
     #[error("HTTP 请求失败: 状态码 {status}，{context}")]
     HttpStatus { status: u16, context: String },
 
-    #[error("未找到认证信息，请先运行 picals-crawler setup")]
+    #[error("未找到认证信息，请先运行 hpd setup")]
     MissingCredential,
 
-    #[error("当前认证信息缺少 userId，请重新运行 picals-crawler setup")]
+    #[error("当前认证信息缺少 userId，请重新运行 hpd setup")]
     MissingUserId,
 
     #[error("输入无效: {0}")]

@@ -16,16 +16,16 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-            archive_name: picals-crawler-aarch64-apple-darwin.tar.gz
+            archive_name: hana-pixiv-downloader-aarch64-apple-darwin.tar.gz
           - os: macos-13
             target: x86_64-apple-darwin
-            archive_name: picals-crawler-x86_64-apple-darwin.tar.gz
+            archive_name: hana-pixiv-downloader-x86_64-apple-darwin.tar.gz
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            archive_name: picals-crawler-x86_64-unknown-linux-gnu.tar.gz
+            archive_name: hana-pixiv-downloader-x86_64-unknown-linux-gnu.tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            archive_name: picals-crawler-x86_64-pc-windows-msvc.zip
+            archive_name: hana-pixiv-downloader-x86_64-pc-windows-msvc.zip
 
     steps:
       - name: 检出代码
@@ -49,16 +49,16 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/picals-crawler dist/
-          tar -czf ${{ matrix.archive_name }} -C dist picals-crawler
+          cp target/${{ matrix.target }}/release/hpd dist/
+          tar -czf ${{ matrix.archive_name }} -C dist hpd
 
       - name: 打包 Windows 产物
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/picals-crawler.exe" "dist/picals-crawler.exe"
-          Compress-Archive -Path "dist/picals-crawler.exe" -DestinationPath "${{ matrix.archive_name }}"
+          Copy-Item "target/${{ matrix.target }}/release/hpd.exe" "dist/hpd.exe"
+          Compress-Archive -Path "dist/hpd.exe" -DestinationPath "${{ matrix.archive_name }}"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4

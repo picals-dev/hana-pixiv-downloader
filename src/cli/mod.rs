@@ -9,7 +9,7 @@ use self::{config::ConfigCommand, download::DownloadCommand};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "picals-crawler",
+    name = "hpd",
     version,
     about = "开箱即用的 Pixiv 图片下载 CLI 工具",
     propagate_version = true

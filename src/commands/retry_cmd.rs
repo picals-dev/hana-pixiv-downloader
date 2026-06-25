@@ -1,4 +1,4 @@
-//! `picals-crawler retry` 命令。
+//! `hpd retry` 命令。
 
 use crate::{
     auth::Credential, cli::RetryCommand, error::AppResult, failure::FailureManifest,

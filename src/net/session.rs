@@ -37,7 +37,7 @@ use super::{
     },
 };
 
-const BASE_URL_ENV_KEY: &str = "PICALS_PIXIV_BASE_URL";
+const BASE_URL_ENV_KEY: &str = "HPD_PIXIV_BASE_URL";
 
 type SleepFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 type NowFn = Arc<dyn Fn() -> SystemTime + Send + Sync>;
@@ -645,7 +645,7 @@ mod tests {
         let defaults = DownloadConfig::default();
         ResolvedDownloadOptions {
             mode: DownloadMode::Illust,
-            directory: "/tmp/picals".into(),
+            directory: "/tmp/hpd".into(),
             count: defaults.count,
             sort: SortOrder::DateDesc,
             r18: defaults.r18,

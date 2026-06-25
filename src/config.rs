@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppResult, CrawlerError};
 
-const CONFIG_DIR_NAME: &str = "picals-crawler";
+const CONFIG_DIR_NAME: &str = "hana-pixiv-downloader";
 const CONFIG_FILE_NAME: &str = "config.toml";
 const CREDENTIAL_FILE_NAME: &str = "credentials";
 const DEFAULT_DOWNLOAD_DIRECTORY: &str = "~/Pictures/Pixiv";
@@ -353,19 +353,19 @@ impl Config {
 impl EnvOverrides {
     pub(crate) fn from_process_env() -> AppResult<Self> {
         Ok(Self {
-            directory: env::var_os("PICALS_DOWNLOAD_DIRECTORY").map(PathBuf::from),
-            count: parse_env_value("PICALS_DOWNLOAD_COUNT"),
-            sort: env::var("PICALS_DOWNLOAD_SORT")
+            directory: env::var_os("HPD_DOWNLOAD_DIRECTORY").map(PathBuf::from),
+            count: parse_env_value("HPD_DOWNLOAD_COUNT"),
+            sort: env::var("HPD_DOWNLOAD_SORT")
                 .ok()
                 .map(|value| parse_sort_value(&value))
                 .transpose()?,
-            r18: parse_env_bool("PICALS_DOWNLOAD_R18"),
-            ai: parse_env_bool("PICALS_DOWNLOAD_AI"),
-            concurrent: parse_env_value("PICALS_DOWNLOAD_CONCURRENT"),
-            timeout: parse_env_value("PICALS_DOWNLOAD_TIMEOUT"),
-            retry: parse_env_value("PICALS_DOWNLOAD_RETRY"),
-            with_tags: parse_env_bool("PICALS_DOWNLOAD_WITH_TAGS"),
-            proxy_url: env::var("PICALS_PROXY_URL")
+            r18: parse_env_bool("HPD_DOWNLOAD_R18"),
+            ai: parse_env_bool("HPD_DOWNLOAD_AI"),
+            concurrent: parse_env_value("HPD_DOWNLOAD_CONCURRENT"),
+            timeout: parse_env_value("HPD_DOWNLOAD_TIMEOUT"),
+            retry: parse_env_value("HPD_DOWNLOAD_RETRY"),
+            with_tags: parse_env_bool("HPD_DOWNLOAD_WITH_TAGS"),
+            proxy_url: env::var("HPD_PROXY_URL")
                 .ok()
                 .or_else(|| env::var("HTTPS_PROXY").ok())
                 .filter(|value| !value.trim().is_empty()),

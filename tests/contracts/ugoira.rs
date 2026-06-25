@@ -1,4 +1,4 @@
-use picals_crawler::{
+use hana_pixiv_downloader::{
     config::DownloadMode,
     downloader::ugoira::quantize_delay_centiseconds,
     failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
@@ -43,9 +43,9 @@ fn ugoira_manifest_roundtrip_preserves_convert_and_source_url() {
         ReplayCommand::Illust {
             illust_id: "654321".to_string(),
             options: ReplayOptions {
-                directory: "/tmp/picals".to_string(),
+                directory: "/tmp/hpd".to_string(),
                 count: 1,
-                sort: picals_crawler::config::SortOrder::DateDesc,
+                sort: hana_pixiv_downloader::config::SortOrder::DateDesc,
                 r18: false,
                 ai: true,
                 concurrent: 1,
@@ -61,7 +61,7 @@ fn ugoira_manifest_roundtrip_preserves_convert_and_source_url() {
             stage: FailureStage::Convert,
             illust_id: Some("654321".to_string()),
             source_url: Some("https://i.pximg.net/example.zip".to_string()),
-            target_path: Some("/tmp/picals/654321/654321.gif".to_string()),
+            target_path: Some("/tmp/hpd/654321/654321.gif".to_string()),
             error_kind: "convert".to_string(),
             error_message: "broken".to_string(),
             retryable: true,

@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
-use picals_crawler::{
+use hana_pixiv_downloader::{
     auth::Credential,
     config::{DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder},
     crawler::{
@@ -834,7 +834,7 @@ async fn user_crawler_fails_on_profile_request_error() {
 #[test]
 fn missing_credential_error_keeps_chinese_message() {
     let error = CrawlerError::MissingCredential;
-    assert!(error.to_string().contains("请先运行 picals-crawler setup"));
+    assert!(error.to_string().contains("请先运行 hpd setup"));
 }
 
 #[test]

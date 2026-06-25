@@ -1,4 +1,4 @@
-//! `picals-crawler download illust` 命令。
+//! `hpd download illust` 命令。
 
 use crate::{
     cli::download::IllustArgs,

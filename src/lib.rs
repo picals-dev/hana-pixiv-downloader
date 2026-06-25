@@ -1,4 +1,4 @@
-//! picals-crawler 的共享库入口。
+//! hana-pixiv-downloader 的共享库入口。
 //!
 //! 对外只暴露 CLI 入口与命令分发；其余模块均为 crate 内部实现，
 //! 仅按测试需要选择性放开可见性。

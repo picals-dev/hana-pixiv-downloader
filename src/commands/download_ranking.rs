@@ -1,4 +1,4 @@
-//! `picals-crawler download ranking` 命令。
+//! `hpd download ranking` 命令。
 
 use crate::{
     cli::download::RankingArgs,

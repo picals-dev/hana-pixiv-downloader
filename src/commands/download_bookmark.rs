@@ -1,4 +1,4 @@
-//! `picals-crawler download bookmark` 命令。
+//! `hpd download bookmark` 命令。
 
 use crate::{
     cli::download::BookmarkArgs,

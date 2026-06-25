@@ -4,7 +4,7 @@ use std::{
 };
 
 use gif::ColorOutput;
-use picals_crawler::{
+use hana_pixiv_downloader::{
     auth::Credential,
     config::{DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder},
     crawler::{
@@ -282,7 +282,7 @@ async fn illust_crawler_downloads_ugoira_gif_and_cleans_workspace() {
         !temp
             .path()
             .join(UGOIRA_ID)
-            .join(".picals-workspace")
+            .join(".hpd-workspace")
             .exists()
     );
 }
@@ -316,7 +316,7 @@ async fn illust_crawler_records_convert_failure_and_cleans_workspace() {
         !temp
             .path()
             .join(UGOIRA_ID)
-            .join(".picals-workspace")
+            .join(".hpd-workspace")
             .exists()
     );
     assert!(

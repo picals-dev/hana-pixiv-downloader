@@ -324,7 +324,7 @@ fn ensure_persistable_record(record: &FailureRecord) -> AppResult<()> {
 
         if path
             .components()
-            .any(|component| component.as_os_str() == ".picals-workspace")
+            .any(|component| component.as_os_str() == ".hpd-workspace")
         {
             return Err(CrawlerError::InvalidInput(format!(
                 "失败清单不允许持久化临时工作区路径: {target_path}"
@@ -443,7 +443,7 @@ mod tests {
     fn options() -> ResolvedDownloadOptions {
         ResolvedDownloadOptions {
             mode: DownloadMode::Illust,
-            directory: "/tmp/picals".into(),
+            directory: "/tmp/hpd".into(),
             count: 1,
             sort: SortOrder::DateDesc,
             r18: false,
@@ -481,7 +481,7 @@ mod tests {
                 stage: FailureStage::Download,
                 illust_id: Some("123456".to_string()),
                 source_url: Some("https://example.com/123456_p0.png".to_string()),
-                target_path: Some("/tmp/picals/123456/123456_p0.png".to_string()),
+                target_path: Some("/tmp/hpd/123456/123456_p0.png".to_string()),
                 error_kind: "timeout".to_string(),
                 error_message: "timeout".to_string(),
                 retryable: true,
@@ -551,7 +551,7 @@ mod tests {
                 illust_id: Some("123456".to_string()),
                 source_url: Some("https://example.com/ugoira.zip".to_string()),
                 target_path: Some(
-                    "/tmp/picals/123456/.picals-workspace/output.gif.part".to_string(),
+                    "/tmp/hpd/123456/.hpd-workspace/output.gif.part".to_string(),
                 ),
                 error_kind: "convert".to_string(),
                 error_message: "broken".to_string(),
