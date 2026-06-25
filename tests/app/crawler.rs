@@ -164,7 +164,7 @@ async fn user_crawler_can_download_images_with_mock_server() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_session(
+    let crawler = UserCrawler::new(
         "12345678".to_string(),
         options(temp.path().to_path_buf()),
         session(
@@ -232,7 +232,7 @@ async fn illust_crawler_can_download_single_work() {
         .mount(&server)
         .await;
 
-    let crawler = IllustCrawler::new_with_session(
+    let crawler = IllustCrawler::new(
         "123456".to_string(),
         options(temp.path().to_path_buf()),
         session(
@@ -291,7 +291,7 @@ async fn user_crawler_exports_tags_json_when_enabled() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_session(
+    let crawler = UserCrawler::new(
         "12345678".to_string(),
         options_with_tags(temp.path().to_path_buf()),
         session(
@@ -356,7 +356,7 @@ async fn user_crawler_skips_existing_file() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_session(
+    let crawler = UserCrawler::new(
         "12345678".to_string(),
         options(temp.path().to_path_buf()),
         session(
@@ -403,7 +403,7 @@ async fn downloader_recovers_from_stale_part_file() {
         .mount(&server)
         .await;
 
-    let crawler = IllustCrawler::new_with_session(
+    let crawler = IllustCrawler::new(
         "123456".to_string(),
         options(temp.path().to_path_buf()),
         session(
@@ -463,7 +463,7 @@ async fn keyword_crawler_can_download_search_results() {
 
     let mut keyword_options = options(temp.path().to_path_buf());
     keyword_options.count = 2;
-    let crawler = KeywordCrawler::new_with_session(
+    let crawler = KeywordCrawler::new(
         "初音ミク".to_string(),
         KeywordMode::Safe,
         keyword_options.clone(),
@@ -516,7 +516,7 @@ async fn ranking_crawler_can_download_ranked_results() {
 
     let mut ranking_options = options(temp.path().to_path_buf());
     ranking_options.count = 2;
-    let crawler = RankingCrawler::new_with_session(
+    let crawler = RankingCrawler::new(
         "daily".to_string(),
         ranking_options.clone(),
         session(
@@ -571,7 +571,7 @@ async fn bookmark_crawler_can_download_bookmarks() {
             .await;
     }
 
-    let crawler = BookmarkCrawler::new_with_session(
+    let crawler = BookmarkCrawler::new(
         "12345678".to_string(),
         options(temp.path().to_path_buf()),
         session(
@@ -631,7 +631,7 @@ async fn bookmark_crawler_truncates_to_requested_count() {
 
     let mut bookmark_options = options(temp.path().to_path_buf());
     bookmark_options.count = 1;
-    let crawler = BookmarkCrawler::new_with_session(
+    let crawler = BookmarkCrawler::new(
         "12345678".to_string(),
         bookmark_options.clone(),
         session(
@@ -701,7 +701,7 @@ async fn bookmark_crawler_exports_tags_json_when_enabled() {
             .await;
     }
 
-    let crawler = BookmarkCrawler::new_with_session(
+    let crawler = BookmarkCrawler::new(
         "12345678".to_string(),
         options_with_tags(temp.path().to_path_buf()),
         session(
@@ -783,7 +783,7 @@ async fn user_crawler_counts_partial_failures_without_failing_command() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_session(
+    let crawler = UserCrawler::new(
         "12345678".to_string(),
         options(temp.path().to_path_buf()),
         session(
@@ -816,7 +816,7 @@ async fn user_crawler_fails_on_profile_request_error() {
         .mount(&server)
         .await;
 
-    let crawler = UserCrawler::new_with_session(
+    let crawler = UserCrawler::new(
         "12345678".to_string(),
         options(temp.path().to_path_buf()),
         session(

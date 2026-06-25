@@ -1,10 +1,8 @@
 //! 统一错误定义。
 
-use std::path::PathBuf;
-
 use thiserror::Error;
 
-pub type AppResult<T> = eyre::Result<T>;
+pub(crate) type AppResult<T> = eyre::Result<T>;
 
 #[derive(Debug, Error)]
 pub enum CrawlerError {
@@ -35,15 +33,6 @@ pub enum CrawlerError {
     #[error("URL 解析失败: {0}")]
     Url(#[from] url::ParseError),
 
-    #[error("正则表达式错误: {0}")]
-    Regex(#[from] regex::Error),
-
-    #[error("未找到用户: {0}")]
-    UserNotFound(String),
-
-    #[error("未找到作品: {0}")]
-    IllustNotFound(String),
-
     #[error("下载中断: {0}")]
     DownloadInterrupted(String),
 
@@ -59,18 +48,6 @@ pub enum CrawlerError {
     #[error("当前认证信息缺少 userId，请重新运行 picals-crawler setup")]
     MissingUserId,
 
-    #[error("未找到配置目录: {0}")]
-    MissingConfigDir(PathBuf),
-
     #[error("输入无效: {0}")]
     InvalidInput(String),
-
-    #[error("{0} 尚未实现")]
-    NotImplemented(&'static str),
-}
-
-impl CrawlerError {
-    pub fn not_implemented(feature: &'static str) -> Self {
-        Self::NotImplemented(feature)
-    }
 }

@@ -17,7 +17,7 @@ impl Drop for SessionObserverGuard {
     }
 }
 
-pub fn install_session_observer(observer: SessionObserver) -> SessionObserverGuard {
+pub(crate) fn install_session_observer(observer: SessionObserver) -> SessionObserverGuard {
     let mut slot = SESSION_OBSERVER.lock().unwrap();
     let previous = slot.replace(observer);
     SessionObserverGuard { previous }

@@ -5,9 +5,7 @@ use std::sync::Arc;
 use crate::{
     config::{DownloadMode, ResolvedDownloadOptions, SortOrder},
     crawler::CrawlContext,
-    crawler::shared::{
-        download_artworks, export_tags_json, plan_artworks_for_illust_ids, sort_illust_ids,
-    },
+    crawler::shared::{plan_tags_and_download, sort_illust_ids},
     downloader::DownloadResult,
     error::AppResult,
     net::PixivNetSession,
@@ -19,7 +17,7 @@ use crate::{
 pub struct KeywordCrawler {
     pub query: String,
     pub mode: KeywordMode,
-    pub context: CrawlContext,
+    pub(crate) context: CrawlContext,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,20 +28,6 @@ pub enum KeywordMode {
 
 impl KeywordCrawler {
     pub fn new(
-        query: String,
-        mode: KeywordMode,
-        mut options: ResolvedDownloadOptions,
-        session: Arc<PixivNetSession>,
-    ) -> AppResult<Self> {
-        options.mode = DownloadMode::Keyword;
-        Ok(Self {
-            query,
-            mode,
-            context: CrawlContext::new(options, session),
-        })
-    }
-
-    pub fn new_with_session(
         query: String,
         mode: KeywordMode,
         mut options: ResolvedDownloadOptions,
@@ -61,7 +45,6 @@ impl KeywordCrawler {
         let order = match self.context.options.sort {
             SortOrder::DateDesc => "date_d",
             SortOrder::DateAsc => "date",
-            SortOrder::PopularDesc => "popular_d",
         };
         let mode = match self.mode {
             KeywordMode::Safe => "safe",
@@ -95,30 +78,12 @@ impl KeywordCrawler {
             &self.context.options.directory,
             &self.query,
         )?;
-        let planned = plan_artworks_for_illust_ids(
+        plan_tags_and_download(
             &self.context.session,
-            illust_ids.clone(),
+            illust_ids,
             &layout,
             &self.context.options,
         )
-        .await;
-        let mut failure_records = planned.failures;
-        failure_records.extend(export_tags_json(
-            &planned.detail_cache,
-            layout.context_dir(),
-            &self.context.options,
-        ));
-        let mut result = download_artworks(
-            self.context.options.clone(),
-            layout.context_dir().to_path_buf(),
-            Arc::clone(&self.context.session),
-            &planned.plans,
-        )
-        .await?;
-        result.failed += failure_records.len();
-        result.total += failure_records.len();
-        result.failure_records.extend(failure_records);
-
-        Ok(result)
+        .await
     }
 }

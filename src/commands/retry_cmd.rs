@@ -5,7 +5,7 @@ use crate::{
     replay::replay_failures,
 };
 
-pub async fn run(args: RetryCommand) -> AppResult<()> {
+pub(crate) async fn run(args: RetryCommand) -> AppResult<()> {
     let manifest = FailureManifest::load_from(&args.manifest_path)?;
     let credential = Credential::load()?.ok_or(crate::error::CrawlerError::MissingCredential)?;
     let report = replay_failures(&credential, &manifest.command, manifest.records).await?;

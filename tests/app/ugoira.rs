@@ -260,7 +260,7 @@ async fn illust_crawler_downloads_ugoira_gif_and_cleans_workspace() {
     let base_url = server.uri().parse().unwrap();
     mount_ugoira_artwork(&server, read_binary_fixture("ugoira.zip")).await;
 
-    let crawler = IllustCrawler::new_with_session(
+    let crawler = IllustCrawler::new(
         UGOIRA_ID.to_string(),
         options(temp.path().to_path_buf()),
         session(
@@ -294,7 +294,7 @@ async fn illust_crawler_records_convert_failure_and_cleans_workspace() {
     let base_url = server.uri().parse().unwrap();
     mount_ugoira_artwork(&server, b"not-a-zip".to_vec()).await;
 
-    let crawler = IllustCrawler::new_with_session(
+    let crawler = IllustCrawler::new(
         UGOIRA_ID.to_string(),
         options(temp.path().to_path_buf()),
         session(
@@ -351,7 +351,7 @@ async fn user_crawler_mixed_batch_reuses_detail_for_tags_export() {
         .unwrap(),
     );
 
-    let crawler = UserCrawler::new_with_session(
+    let crawler = UserCrawler::new(
         USER_ID.to_string(),
         options_with_tags(temp.path().to_path_buf()),
         session,
@@ -411,7 +411,7 @@ async fn keyword_crawler_supports_mixed_batch_with_ugoira() {
     mount_keyword_page(&server).await;
     mount_mixed_artwork_assets(&server).await;
 
-    let crawler = KeywordCrawler::new_with_session(
+    let crawler = KeywordCrawler::new(
         KEYWORD.to_string(),
         KeywordMode::Safe,
         ResolvedDownloadOptions {
@@ -454,7 +454,7 @@ async fn ranking_crawler_supports_mixed_batch_with_ugoira() {
     mount_ranking_page(&server).await;
     mount_mixed_artwork_assets(&server).await;
 
-    let crawler = RankingCrawler::new_with_session(
+    let crawler = RankingCrawler::new(
         RANKING_MODE.to_string(),
         ResolvedDownloadOptions {
             count: 2,
@@ -496,7 +496,7 @@ async fn bookmark_crawler_supports_mixed_batch_with_ugoira() {
     mount_bookmark_page(&server).await;
     mount_mixed_artwork_assets(&server).await;
 
-    let crawler = BookmarkCrawler::new_with_session(
+    let crawler = BookmarkCrawler::new(
         USER_ID.to_string(),
         ResolvedDownloadOptions {
             count: 2,

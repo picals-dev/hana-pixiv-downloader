@@ -10,12 +10,16 @@ use tokio::sync::Mutex as AsyncMutex;
 use super::HostKind;
 
 #[derive(Debug, Default)]
-pub struct SharedState {
+pub(crate) struct SharedState {
     cooldowns: AsyncMutex<HashMap<HostKind, SystemTime>>,
 }
 
 impl SharedState {
-    pub async fn cooldown_remaining(&self, host: HostKind, now: SystemTime) -> Option<Duration> {
+    pub(crate) async fn cooldown_remaining(
+        &self,
+        host: HostKind,
+        now: SystemTime,
+    ) -> Option<Duration> {
         let mut cooldowns = self.cooldowns.lock().await;
         let deadline = cooldowns.get(&host).copied()?;
         if deadline <= now {
@@ -25,7 +29,7 @@ impl SharedState {
         deadline.duration_since(now).ok()
     }
 
-    pub async fn extend_cooldown(&self, host: HostKind, now: SystemTime, delay: Duration) {
+    pub(crate) async fn extend_cooldown(&self, host: HostKind, now: SystemTime, delay: Duration) {
         let mut cooldowns = self.cooldowns.lock().await;
         let next_deadline = now + delay;
         match cooldowns.get(&host).copied() {

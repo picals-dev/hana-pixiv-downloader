@@ -19,7 +19,7 @@ pub struct ReplayExecutionReport {
     pub remaining_records: Vec<FailureRecord>,
 }
 
-pub async fn replay_failures(
+pub(crate) async fn replay_failures(
     credential: &Credential,
     command: &ReplayCommand,
     records: Vec<FailureRecord>,

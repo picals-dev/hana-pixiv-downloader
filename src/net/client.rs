@@ -19,20 +19,23 @@ const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7
      (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 #[derive(Debug, Clone)]
-pub struct NetClients {
+pub(crate) struct NetClients {
     metadata: Client,
     image: Client,
 }
 
 impl NetClients {
-    pub fn new(options: &ResolvedDownloadOptions, credential: &Credential) -> AppResult<Self> {
+    pub(crate) fn new(
+        options: &ResolvedDownloadOptions,
+        credential: &Credential,
+    ) -> AppResult<Self> {
         Ok(Self {
             metadata: build_metadata_client(options, credential)?,
             image: build_image_client(options)?,
         })
     }
 
-    pub fn client_for(&self, kind: RequestKind) -> &Client {
+    pub(crate) fn client_for(&self, kind: RequestKind) -> &Client {
         match kind.host_kind() {
             HostKind::Metadata => &self.metadata,
             HostKind::Image => &self.image,

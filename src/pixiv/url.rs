@@ -5,13 +5,13 @@ use url::Url;
 use crate::error::CrawlerError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PixivUrlTarget {
+pub(crate) enum PixivUrlTarget {
     User { user_id: String },
     Illust { illust_id: String },
     Keyword { query: String },
 }
 
-pub fn extract_user_id(input: &str) -> Result<String, CrawlerError> {
+pub(crate) fn extract_user_id(input: &str) -> Result<String, CrawlerError> {
     if let Some(user_id) = extract_numeric_id(input) {
         return Ok(user_id);
     }
@@ -24,7 +24,7 @@ pub fn extract_user_id(input: &str) -> Result<String, CrawlerError> {
     }
 }
 
-pub fn extract_illust_id(input: &str) -> Result<String, CrawlerError> {
+pub(crate) fn extract_illust_id(input: &str) -> Result<String, CrawlerError> {
     if let Some(illust_id) = extract_numeric_id(input) {
         return Ok(illust_id);
     }
@@ -37,7 +37,7 @@ pub fn extract_illust_id(input: &str) -> Result<String, CrawlerError> {
     }
 }
 
-pub fn parse_pixiv_url_target(input: &str) -> Result<PixivUrlTarget, CrawlerError> {
+pub(crate) fn parse_pixiv_url_target(input: &str) -> Result<PixivUrlTarget, CrawlerError> {
     let trimmed = input.trim();
     let url = Url::parse(trimmed)?;
     let segments: Vec<_> = url

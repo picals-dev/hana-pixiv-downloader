@@ -22,7 +22,7 @@ struct AuthConfigView {
     user_id: Option<String>,
 }
 
-pub async fn show() -> AppResult<()> {
+pub(crate) async fn show() -> AppResult<()> {
     let config = Config::load()?;
     let credential = Credential::load()?;
 
@@ -34,7 +34,7 @@ pub async fn show() -> AppResult<()> {
     Ok(())
 }
 
-pub async fn set(args: SetConfigArgs) -> AppResult<()> {
+pub(crate) async fn set(args: SetConfigArgs) -> AppResult<()> {
     let updated_key = args.key.clone();
 
     match args.key.as_str() {
@@ -153,22 +153,6 @@ mod tests {
     };
 
     use super::{render_show_output, set};
-
-    #[tokio::test]
-    async fn config_set_rejects_popular_sort() {
-        let _lock = lock_env().await;
-        let temp = tempdir().unwrap();
-        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path());
-
-        let error = set(SetConfigArgs {
-            key: "download.sort".to_string(),
-            value: "popular_desc".to_string(),
-        })
-        .await
-        .unwrap_err();
-
-        assert!(format!("{error:#}").contains("popular_desc 已不再支持"));
-    }
 
     #[tokio::test]
     async fn config_set_can_update_auth_keys() {

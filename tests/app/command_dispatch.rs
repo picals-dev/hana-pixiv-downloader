@@ -8,7 +8,7 @@ use picals_crawler::{
     auth::Credential,
     cli::Cli,
     commands,
-    config::{Config, DownloadConfig, POPULAR_SORT_MIGRATION_MESSAGE, ProxyConfig, SortOrder},
+    config::{Config, SortOrder},
     failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
     net::NetEvent,
 };
@@ -63,15 +63,9 @@ async fn ranking_rejects_non_default_values_from_config() {
     let _config_home = set_config_home(temp.path());
     let _download_env = unset_download_env();
 
-    Config {
-        download: DownloadConfig {
-            sort: SortOrder::DateAsc,
-            ..DownloadConfig::default()
-        },
-        proxy: ProxyConfig::default(),
-    }
-    .save()
-    .unwrap();
+    let mut config = Config::default();
+    config.download.sort = SortOrder::DateAsc;
+    config.save().unwrap();
 
     let cli = Cli::parse_from(["picals-crawler", "download", "ranking", "--dry-run"]);
     let error = commands::dispatch(cli).await.unwrap_err();
@@ -134,7 +128,7 @@ async fn bookmark_dry_run_accepts_credential_with_user_id() {
 }
 
 #[tokio::test]
-async fn env_popular_sort_returns_migration_error() {
+async fn env_invalid_sort_returns_error() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
     let _config_home = set_config_home(temp.path());
@@ -143,7 +137,7 @@ async fn env_popular_sort_returns_migration_error() {
 
     let cli = Cli::parse_from(["picals-crawler", "download", "illust", "123"]);
     let error = commands::dispatch(cli).await.unwrap_err();
-    assert!(format!("{error:#}").contains(POPULAR_SORT_MIGRATION_MESSAGE));
+    assert!(format!("{error:#}").contains("无效的排序值"));
 }
 
 #[tokio::test]

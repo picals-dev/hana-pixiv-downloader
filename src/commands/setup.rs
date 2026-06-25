@@ -17,7 +17,7 @@ use crate::{
     pixiv::selector::select_current_user_id,
 };
 
-pub async fn run() -> AppResult<()> {
+pub(crate) async fn run() -> AppResult<()> {
     print_setup_intro();
 
     let mut config = Config::load()?;
@@ -257,7 +257,7 @@ fn prompt_sort_order(default: SortOrder) -> AppResult<SortOrder> {
     let options = vec![SortChoice::DateDesc, SortChoice::DateAsc];
     let cursor = if default == SortOrder::DateAsc { 1 } else { 0 };
     let selected = Select::new("默认排序方式", options)
-        .with_help_message("popular_desc 已冻结，不再作为可选项")
+        .with_help_message("支持按发布时间排序（新→旧 / 旧→新）")
         .with_starting_cursor(cursor)
         .prompt()
         .map_err(map_inquire_error)?;
@@ -299,7 +299,6 @@ fn render_sort(sort: SortOrder) -> &'static str {
     match sort {
         SortOrder::DateDesc => "date_desc",
         SortOrder::DateAsc => "date_asc",
-        SortOrder::PopularDesc => "popular_desc",
     }
 }
 

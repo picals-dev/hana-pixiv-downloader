@@ -37,12 +37,12 @@ impl Credential {
         Self::from_parts(phpsessid.into(), user_id.map(Into::into))
     }
 
-    pub fn load() -> AppResult<Option<Self>> {
+    pub(crate) fn load() -> AppResult<Option<Self>> {
         let path = credential_file_path()?;
         Self::load_from(&path)
     }
 
-    pub fn load_from(path: &Path) -> AppResult<Option<Self>> {
+    pub(crate) fn load_from(path: &Path) -> AppResult<Option<Self>> {
         if !path.exists() {
             return Ok(None);
         }
@@ -61,7 +61,7 @@ impl Credential {
         self.save_to(&path)
     }
 
-    pub fn save_to(&self, path: &Path) -> AppResult<()> {
+    pub(crate) fn save_to(&self, path: &Path) -> AppResult<()> {
         self.validate()?;
 
         if let Some(parent) = path.parent() {
@@ -77,24 +77,20 @@ impl Credential {
         Ok(())
     }
 
-    pub fn exists() -> bool {
-        credential_file_path().is_ok_and(|path| path.exists())
-    }
-
-    pub fn user_id(&self) -> Option<&str> {
+    pub(crate) fn user_id(&self) -> Option<&str> {
         self.user_id.as_deref()
     }
 
-    pub fn require_user_id(&self) -> AppResult<&str> {
+    pub(crate) fn require_user_id(&self) -> AppResult<&str> {
         self.user_id().ok_or(CrawlerError::MissingUserId.into())
     }
 
-    pub fn set_phpsessid(&mut self, phpsessid: impl Into<String>) -> AppResult<()> {
+    pub(crate) fn set_phpsessid(&mut self, phpsessid: impl Into<String>) -> AppResult<()> {
         self.phpsessid = normalize_phpsessid(phpsessid.into())?;
         self.validate()
     }
 
-    pub fn set_user_id<T>(&mut self, user_id: Option<T>) -> AppResult<()>
+    pub(crate) fn set_user_id<T>(&mut self, user_id: Option<T>) -> AppResult<()>
     where
         T: Into<String>,
     {
@@ -102,7 +98,7 @@ impl Credential {
         self.validate()
     }
 
-    pub fn parse_user_id(input: &str) -> AppResult<String> {
+    pub(crate) fn parse_user_id(input: &str) -> AppResult<String> {
         normalize_user_id(Some(input.to_string()))?
             .ok_or_else(|| eyre!(CrawlerError::Auth("userId 不能为空".to_string())))
     }

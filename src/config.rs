@@ -14,8 +14,6 @@ const CONFIG_DIR_NAME: &str = "picals-crawler";
 const CONFIG_FILE_NAME: &str = "config.toml";
 const CREDENTIAL_FILE_NAME: &str = "credentials";
 const DEFAULT_DOWNLOAD_DIRECTORY: &str = "~/Pictures/Pixiv";
-pub const POPULAR_SORT_MIGRATION_MESSAGE: &str =
-    "popular_desc 已不再支持，请改用 date_desc 或 date_asc";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -23,7 +21,6 @@ pub enum SortOrder {
     #[default]
     DateDesc,
     DateAsc,
-    PopularDesc,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,20 +33,8 @@ pub enum DownloadMode {
     Ranking,
 }
 
-impl DownloadMode {
-    pub fn as_config_key(self) -> &'static str {
-        match self {
-            Self::Illust => "illust",
-            Self::User => "user",
-            Self::Bookmark => "bookmark",
-            Self::Keyword => "keyword",
-            Self::Ranking => "ranking",
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DownloadRootsConfig {
+pub(crate) struct DownloadRootsConfig {
     pub illust: String,
     pub user: String,
     pub bookmark: String,
@@ -64,7 +49,7 @@ impl Default for DownloadRootsConfig {
 }
 
 impl DownloadRootsConfig {
-    pub fn from_seed(seed: &str) -> Self {
+    pub(crate) fn from_seed(seed: &str) -> Self {
         Self {
             illust: join_root_seed(seed, "illust"),
             user: join_root_seed(seed, "user"),
@@ -74,7 +59,7 @@ impl DownloadRootsConfig {
         }
     }
 
-    pub fn get(&self, mode: DownloadMode) -> &str {
+    pub(crate) fn get(&self, mode: DownloadMode) -> &str {
         match mode {
             DownloadMode::Illust => &self.illust,
             DownloadMode::User => &self.user,
@@ -87,7 +72,7 @@ impl DownloadRootsConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DownloadConfig {
-    pub roots: DownloadRootsConfig,
+    pub(crate) roots: DownloadRootsConfig,
     pub count: usize,
     pub sort: SortOrder,
     pub r18: bool,
@@ -126,7 +111,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DownloadOverrides {
+pub(crate) struct DownloadOverrides {
     pub directory: Option<PathBuf>,
     pub count: Option<usize>,
     pub sort: Option<SortOrder>,
@@ -141,7 +126,7 @@ pub struct DownloadOverrides {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct EnvOverrides {
+pub(crate) struct EnvOverrides {
     pub directory: Option<PathBuf>,
     pub count: Option<usize>,
     pub sort: Option<SortOrder>,
@@ -235,11 +220,11 @@ impl RawDownloadRootsConfig {
 }
 
 impl Config {
-    pub fn load() -> AppResult<Self> {
+    pub(crate) fn load() -> AppResult<Self> {
         Self::load_from(&config_file_path()?)
     }
 
-    pub fn load_from(path: &Path) -> AppResult<Self> {
+    pub(crate) fn load_from(path: &Path) -> AppResult<Self> {
         if !path.exists() {
             return Ok(Self::default());
         }
@@ -258,7 +243,7 @@ impl Config {
         self.save_to(&dir.join(CONFIG_FILE_NAME))
     }
 
-    pub fn save_to(&self, path: &Path) -> AppResult<()> {
+    pub(crate) fn save_to(&self, path: &Path) -> AppResult<()> {
         self.validate()?;
         let content = toml::to_string_pretty(self)?;
 
@@ -273,7 +258,7 @@ impl Config {
         Ok(())
     }
 
-    pub fn resolve_download_options(
+    pub(crate) fn resolve_download_options(
         &self,
         mode: DownloadMode,
         env: &EnvOverrides,
@@ -318,7 +303,6 @@ impl Config {
             dry_run: cli.dry_run,
         };
 
-        validate_sort_order(resolved.sort)?;
         Ok(resolved)
     }
 
@@ -357,7 +341,6 @@ impl Config {
     }
 
     fn validate(&self) -> AppResult<()> {
-        validate_sort_order(self.download.sort)?;
         validate_non_empty_path("download.roots.illust", &self.download.roots.illust)?;
         validate_non_empty_path("download.roots.user", &self.download.roots.user)?;
         validate_non_empty_path("download.roots.bookmark", &self.download.roots.bookmark)?;
@@ -368,7 +351,7 @@ impl Config {
 }
 
 impl EnvOverrides {
-    pub fn from_process_env() -> AppResult<Self> {
+    pub(crate) fn from_process_env() -> AppResult<Self> {
         Ok(Self {
             directory: env::var_os("PICALS_DOWNLOAD_DIRECTORY").map(PathBuf::from),
             count: parse_env_value("PICALS_DOWNLOAD_COUNT"),
@@ -390,7 +373,7 @@ impl EnvOverrides {
     }
 }
 
-pub fn config_dir() -> AppResult<PathBuf> {
+pub(crate) fn config_dir() -> AppResult<PathBuf> {
     let base = if let Some(xdg_config_home) = env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .filter(|path| !path.as_os_str().is_empty())
@@ -404,21 +387,21 @@ pub fn config_dir() -> AppResult<PathBuf> {
     Ok(base.join(CONFIG_DIR_NAME))
 }
 
-pub fn ensure_config_dir() -> AppResult<PathBuf> {
+pub(crate) fn ensure_config_dir() -> AppResult<PathBuf> {
     let dir = config_dir()?;
     fs::create_dir_all(&dir).with_context(|| format!("创建配置目录失败: {}", dir.display()))?;
     Ok(dir)
 }
 
-pub fn config_file_path() -> AppResult<PathBuf> {
+pub(crate) fn config_file_path() -> AppResult<PathBuf> {
     Ok(config_dir()?.join(CONFIG_FILE_NAME))
 }
 
-pub fn credential_file_path() -> AppResult<PathBuf> {
+pub(crate) fn credential_file_path() -> AppResult<PathBuf> {
     Ok(config_dir()?.join(CREDENTIAL_FILE_NAME))
 }
 
-pub fn expand_home_dir(path: &Path) -> AppResult<PathBuf> {
+pub(crate) fn expand_home_dir(path: &Path) -> AppResult<PathBuf> {
     let raw = path.to_string_lossy();
 
     if raw == "~" {
@@ -445,7 +428,6 @@ pub(crate) fn parse_sort_value(value: &str) -> AppResult<SortOrder> {
     match value.trim().to_ascii_lowercase().as_str() {
         "date_desc" => Ok(SortOrder::DateDesc),
         "date_asc" => Ok(SortOrder::DateAsc),
-        "popular_desc" => Err(popular_sort_migration_error().into()),
         _ => Err(invalid_sort_value_error(value).into()),
     }
 }
@@ -455,18 +437,6 @@ pub(crate) fn invalid_sort_value_error(value: &str) -> CrawlerError {
         "无效的排序值: {}，可选值为 date_desc/date_asc",
         value
     ))
-}
-
-pub(crate) fn popular_sort_migration_error() -> CrawlerError {
-    CrawlerError::InvalidInput(POPULAR_SORT_MIGRATION_MESSAGE.to_string())
-}
-
-fn validate_sort_order(sort: SortOrder) -> AppResult<()> {
-    if sort == SortOrder::PopularDesc {
-        return Err(popular_sort_migration_error().into());
-    }
-
-    Ok(())
 }
 
 fn validate_non_empty_path(key: &str, value: &str) -> AppResult<()> {
@@ -513,8 +483,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        Config, DownloadMode, DownloadOverrides, DownloadRootsConfig, EnvOverrides,
-        POPULAR_SORT_MIGRATION_MESSAGE, SortOrder, parse_sort_value,
+        Config, DownloadMode, DownloadOverrides, DownloadRootsConfig, EnvOverrides, SortOrder,
     };
 
     #[test]
@@ -588,55 +557,6 @@ mod tests {
             resolved.proxy_url.as_deref(),
             Some("socks5://127.0.0.1:1080")
         );
-    }
-
-    #[test]
-    fn parse_sort_value_rejects_popular_sort() {
-        let error = parse_sort_value("popular_desc").unwrap_err();
-        assert!(format!("{error:#}").contains(POPULAR_SORT_MIGRATION_MESSAGE));
-    }
-
-    #[test]
-    fn config_load_rejects_popular_sort_in_history_file() {
-        let temp = tempdir().unwrap();
-        let path = temp.path().join("config.toml");
-        std::fs::write(
-            &path,
-            r#"[download]
-directory = "~/Pictures/Pixiv"
-count = 0
-sort = "popular_desc"
-r18 = false
-ai = true
-concurrent = 8
-timeout = 30
-retry = 3
-with_tags = false
-
-[proxy]
-url = ""
-"#,
-        )
-        .unwrap();
-
-        let error = Config::load_from(&path).unwrap_err();
-        assert!(format!("{error:#}").contains(POPULAR_SORT_MIGRATION_MESSAGE));
-    }
-
-    #[test]
-    fn resolve_download_options_rejects_popular_sort_from_existing_config() {
-        let mut config = Config::default();
-        config.download.sort = SortOrder::PopularDesc;
-
-        let error = config
-            .resolve_download_options(
-                DownloadMode::Illust,
-                &EnvOverrides::default(),
-                &DownloadOverrides::default(),
-            )
-            .unwrap_err();
-
-        assert!(format!("{error:#}").contains(POPULAR_SORT_MIGRATION_MESSAGE));
     }
 
     #[test]

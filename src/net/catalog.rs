@@ -9,8 +9,6 @@ use crate::{
     pixiv::selector::select_current_user_id,
 };
 
-const DEFAULT_IMAGE_BASE_URL: &str = "https://i.pximg.net";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HostKind {
     Metadata,
@@ -72,30 +70,29 @@ impl RequestKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RequestSpec {
+pub(crate) struct RequestSpec {
     pub kind: RequestKind,
     pub url: Url,
     pub referer: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CurrentUserPage {
+pub(crate) struct CurrentUserPage {
     pub header_user_id: Option<String>,
     pub html: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct PixivCatalog {
+pub(crate) struct PixivCatalog {
     metadata_base_url: Url,
 }
 
 impl PixivCatalog {
-    pub fn new(metadata_base_url: Url) -> AppResult<Self> {
-        let _ = Url::parse(DEFAULT_IMAGE_BASE_URL)?;
+    pub(crate) fn new(metadata_base_url: Url) -> AppResult<Self> {
         Ok(Self { metadata_base_url })
     }
 
-    pub fn homepage(&self) -> AppResult<RequestSpec> {
+    pub(crate) fn homepage(&self) -> AppResult<RequestSpec> {
         Ok(RequestSpec {
             kind: RequestKind::Homepage,
             url: self.metadata_base_url.join("/")?,
@@ -103,7 +100,7 @@ impl PixivCatalog {
         })
     }
 
-    pub fn user_profile_all(&self, user_id: &str) -> AppResult<RequestSpec> {
+    pub(crate) fn user_profile_all(&self, user_id: &str) -> AppResult<RequestSpec> {
         self.metadata_request(
             RequestKind::UserProfile,
             &format!("/ajax/user/{user_id}/profile/all?lang=zh"),
@@ -111,7 +108,7 @@ impl PixivCatalog {
         )
     }
 
-    pub fn illust_pages(&self, illust_id: &str) -> AppResult<RequestSpec> {
+    pub(crate) fn illust_pages(&self, illust_id: &str) -> AppResult<RequestSpec> {
         self.metadata_request(
             RequestKind::IllustPages,
             &format!("/ajax/illust/{illust_id}/pages?lang=zh"),
@@ -119,7 +116,7 @@ impl PixivCatalog {
         )
     }
 
-    pub fn illust_detail(&self, illust_id: &str) -> AppResult<RequestSpec> {
+    pub(crate) fn illust_detail(&self, illust_id: &str) -> AppResult<RequestSpec> {
         self.metadata_request(
             RequestKind::IllustDetail,
             &format!("/ajax/illust/{illust_id}?lang=zh"),
@@ -127,7 +124,7 @@ impl PixivCatalog {
         )
     }
 
-    pub fn ugoira_meta(&self, illust_id: &str) -> AppResult<RequestSpec> {
+    pub(crate) fn ugoira_meta(&self, illust_id: &str) -> AppResult<RequestSpec> {
         self.metadata_request(
             RequestKind::UgoiraMeta,
             &format!("/ajax/illust/{illust_id}/ugoira_meta?lang=zh"),
@@ -135,7 +132,7 @@ impl PixivCatalog {
         )
     }
 
-    pub fn keyword_page(
+    pub(crate) fn keyword_page(
         &self,
         keyword: &str,
         order: &str,
@@ -163,7 +160,7 @@ impl PixivCatalog {
         )
     }
 
-    pub fn ranking_page(&self, mode: &str, page: usize) -> AppResult<RequestSpec> {
+    pub(crate) fn ranking_page(&self, mode: &str, page: usize) -> AppResult<RequestSpec> {
         self.metadata_request(
             RequestKind::Ranking,
             &format!("/ranking.php?mode={mode}&p={page}&format=json"),
@@ -171,7 +168,7 @@ impl PixivCatalog {
         )
     }
 
-    pub fn bookmark_page(
+    pub(crate) fn bookmark_page(
         &self,
         user_id: &str,
         offset: usize,
@@ -186,7 +183,11 @@ impl PixivCatalog {
         )
     }
 
-    pub fn image_download(&self, image_url: &str, illust_id: &str) -> AppResult<RequestSpec> {
+    pub(crate) fn image_download(
+        &self,
+        image_url: &str,
+        illust_id: &str,
+    ) -> AppResult<RequestSpec> {
         let url = Url::parse(image_url)?;
         Ok(RequestSpec {
             kind: RequestKind::ImageDownload,
@@ -199,7 +200,11 @@ impl PixivCatalog {
         })
     }
 
-    pub fn ugoira_download(&self, image_url: &str, illust_id: &str) -> AppResult<RequestSpec> {
+    pub(crate) fn ugoira_download(
+        &self,
+        image_url: &str,
+        illust_id: &str,
+    ) -> AppResult<RequestSpec> {
         let url = Url::parse(image_url)?;
         Ok(RequestSpec {
             kind: RequestKind::UgoiraDownload,
@@ -212,7 +217,7 @@ impl PixivCatalog {
         })
     }
 
-    pub fn parse_current_user_page(
+    pub(crate) fn parse_current_user_page(
         &self,
         header_user_id: Option<String>,
         html: String,
@@ -243,11 +248,11 @@ impl PixivCatalog {
     }
 }
 
-pub fn default_metadata_base_url() -> AppResult<Url> {
+pub(crate) fn default_metadata_base_url() -> AppResult<Url> {
     Ok(Url::parse(PIXIV_BASE_URL)?)
 }
 
-pub fn extract_header_user_id(headers: &reqwest::header::HeaderMap) -> Option<String> {
+pub(crate) fn extract_header_user_id(headers: &reqwest::header::HeaderMap) -> Option<String> {
     headers
         .get("x-userid")
         .or_else(|| headers.get("x-user-id"))
@@ -255,14 +260,14 @@ pub fn extract_header_user_id(headers: &reqwest::header::HeaderMap) -> Option<St
         .map(str::to_string)
 }
 
-pub fn ensure_non_empty_body(bytes_len: usize) -> AppResult<()> {
+pub(crate) fn ensure_non_empty_body(bytes_len: usize) -> AppResult<()> {
     if bytes_len == 0 {
         return Err(CrawlerError::DownloadInterrupted("下载到空文件".to_string()).into());
     }
     Ok(())
 }
 
-pub fn ensure_content_length(content_length: Option<u64>, bytes_len: u64) -> AppResult<()> {
+pub(crate) fn ensure_content_length(content_length: Option<u64>, bytes_len: u64) -> AppResult<()> {
     if let Some(expected_length) = content_length
         && expected_length != bytes_len
     {
@@ -271,7 +276,7 @@ pub fn ensure_content_length(content_length: Option<u64>, bytes_len: u64) -> App
     Ok(())
 }
 
-pub fn extract_json_body(value: Value) -> AppResult<Value> {
+pub(crate) fn extract_json_body(value: Value) -> AppResult<Value> {
     if value.get("error").and_then(Value::as_bool).unwrap_or(false) {
         let message = value
             .get("message")

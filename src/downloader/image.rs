@@ -7,19 +7,19 @@ use url::Url;
 use crate::error::CrawlerError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DownloadItem {
+pub(crate) struct DownloadItem {
     pub illust_id: String,
     pub image_url: String,
     pub target_dir: PathBuf,
 }
 
 impl DownloadItem {
-    pub fn target_path(&self) -> Result<PathBuf, CrawlerError> {
+    pub(crate) fn target_path(&self) -> Result<PathBuf, CrawlerError> {
         target_path_for_image(&self.target_dir, &self.image_url)
     }
 }
 
-pub fn file_name_from_image_url(url: &str) -> Result<String, CrawlerError> {
+pub(crate) fn file_name_from_image_url(url: &str) -> Result<String, CrawlerError> {
     let url = Url::parse(url)?;
     let path = url.path().trim_end_matches('/');
     let file_name = path
@@ -31,28 +31,15 @@ pub fn file_name_from_image_url(url: &str) -> Result<String, CrawlerError> {
     Ok(file_name.to_string())
 }
 
-pub fn target_path_for_image(directory: &Path, url: &str) -> Result<PathBuf, CrawlerError> {
+pub(crate) fn target_path_for_image(directory: &Path, url: &str) -> Result<PathBuf, CrawlerError> {
     Ok(directory.join(file_name_from_image_url(url)?))
-}
-
-pub fn illust_id_from_image_url(url: &str) -> Result<String, CrawlerError> {
-    let file_name = file_name_from_image_url(url)?;
-    let illust_id = file_name
-        .split_once("_p")
-        .map(|(prefix, _)| prefix)
-        .filter(|prefix| !prefix.is_empty() && prefix.chars().all(|ch| ch.is_ascii_digit()))
-        .ok_or_else(|| CrawlerError::InvalidInput(format!("无法从图片 URL 提取作品 ID: {url}")))?;
-
-    Ok(illust_id.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{
-        DownloadItem, file_name_from_image_url, illust_id_from_image_url, target_path_for_image,
-    };
+    use super::{DownloadItem, file_name_from_image_url, target_path_for_image};
 
     #[test]
     fn image_file_name_can_be_extracted() {
@@ -65,12 +52,6 @@ mod tests {
         let url = "https://i.pximg.net/img-original/img/2024/01/02/03/04/05/123456_p0.png";
         let path = target_path_for_image(Path::new("/tmp/picals"), url).unwrap();
         assert!(path.ends_with("123456_p0.png"));
-    }
-
-    #[test]
-    fn illust_id_can_be_extracted_from_image_url() {
-        let url = "https://i.pximg.net/img-original/img/2024/01/02/03/04/05/123456_p0.png";
-        assert_eq!(illust_id_from_image_url(url).unwrap(), "123456");
     }
 
     #[test]

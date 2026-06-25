@@ -6,7 +6,7 @@ use crate::{
     pixiv::url::{PixivUrlTarget, parse_pixiv_url_target},
 };
 
-pub async fn run(args: DirectDownloadArgs) -> AppResult<()> {
+pub(crate) async fn run(args: DirectDownloadArgs) -> AppResult<()> {
     let pixiv_url = args.pixiv_url.as_deref().ok_or_else(|| {
         CrawlerError::InvalidInput("请提供 Pixiv 用户、作品或标签页面 URL".to_string())
     })?;

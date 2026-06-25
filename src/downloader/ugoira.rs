@@ -24,12 +24,12 @@ const UGOIRA_ARCHIVE_NAME: &str = "source.zip";
 const UGOIRA_TEMP_GIF_NAME: &str = "output.gif.part";
 
 #[derive(Debug)]
-pub struct UgoiraDownloadError {
+pub(crate) struct UgoiraDownloadError {
     pub stage: FailureStage,
     pub error: eyre::Report,
 }
 
-pub async fn download_ugoira_with_progress(
+pub(crate) async fn download_ugoira_with_progress(
     session: &PixivNetSession,
     plan: &UgoiraDownloadPlan,
     on_chunk: Option<Arc<TransferChunkObserver>>,
@@ -107,7 +107,7 @@ pub async fn download_ugoira_with_progress(
     }
 }
 
-pub fn target_path_for_ugoira(directory: &Path, illust_id: &str) -> PathBuf {
+pub(crate) fn target_path_for_ugoira(directory: &Path, illust_id: &str) -> PathBuf {
     directory.join(format!("{illust_id}.gif"))
 }
 

@@ -38,7 +38,7 @@ pub struct FailureRecord {
 }
 
 impl FailureRecord {
-    pub fn from_report(
+    pub(crate) fn from_report(
         mode: DownloadMode,
         stage: FailureStage,
         illust_id: Option<String>,
@@ -59,7 +59,7 @@ impl FailureRecord {
         }
     }
 
-    pub fn from_crawler_error(
+    pub(crate) fn from_crawler_error(
         mode: DownloadMode,
         stage: FailureStage,
         illust_id: Option<String>,
@@ -131,7 +131,7 @@ pub struct FailureManifest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ErrorClassification {
+pub(crate) struct ErrorClassification {
     pub error_kind: String,
     pub retryable: bool,
 }
@@ -155,7 +155,7 @@ impl From<&ResolvedDownloadOptions> for ReplayOptions {
 }
 
 impl ReplayOptions {
-    pub fn to_resolved(&self, mode: DownloadMode) -> ResolvedDownloadOptions {
+    pub(crate) fn to_resolved(&self, mode: DownloadMode) -> ResolvedDownloadOptions {
         ResolvedDownloadOptions {
             mode,
             directory: PathBuf::from(&self.directory),
@@ -172,7 +172,7 @@ impl ReplayOptions {
         }
     }
 
-    pub fn with_retry_profile(&self) -> Self {
+    pub(crate) fn with_retry_profile(&self) -> Self {
         let mut next = self.clone();
         next.concurrent = 1;
         next.retry = next.retry.max(3);
@@ -181,7 +181,7 @@ impl ReplayOptions {
 }
 
 impl ReplayCommand {
-    pub fn file_stem(&self) -> &'static str {
+    pub(crate) fn file_stem(&self) -> &'static str {
         match self {
             Self::User { .. } => "download-user",
             Self::Illust { .. } => "download-illust",
@@ -191,7 +191,7 @@ impl ReplayCommand {
         }
     }
 
-    pub fn with_retry_profile(&self) -> Self {
+    pub(crate) fn with_retry_profile(&self) -> Self {
         match self {
             Self::User { user_id, options } => Self::User {
                 user_id: user_id.clone(),
@@ -221,7 +221,7 @@ impl ReplayCommand {
         }
     }
 
-    pub fn mode(&self) -> DownloadMode {
+    pub(crate) fn mode(&self) -> DownloadMode {
         match self {
             Self::User { .. } => DownloadMode::User,
             Self::Illust { .. } => DownloadMode::Illust,
@@ -231,7 +231,7 @@ impl ReplayCommand {
         }
     }
 
-    pub fn subject(&self) -> &str {
+    pub(crate) fn subject(&self) -> &str {
         match self {
             Self::User { user_id, .. } => user_id,
             Self::Illust { illust_id, .. } => illust_id,
@@ -241,7 +241,7 @@ impl ReplayCommand {
         }
     }
 
-    pub fn options(&self) -> &ReplayOptions {
+    pub(crate) fn options(&self) -> &ReplayOptions {
         match self {
             Self::User { options, .. }
             | Self::Illust { options, .. }
@@ -289,7 +289,7 @@ impl FailureManifest {
     }
 }
 
-pub fn manifest_timestamp() -> AppResult<String> {
+pub(crate) fn manifest_timestamp() -> AppResult<String> {
     let now = Timestamp::try_from(SystemTime::now())?;
     Ok(now.strftime("%Y%m%dT%H%M%SZ").to_string())
 }
@@ -336,7 +336,7 @@ fn ensure_persistable_record(record: &FailureRecord) -> AppResult<()> {
     Ok(())
 }
 
-pub fn classify_error(error: &eyre::Report) -> ErrorClassification {
+pub(crate) fn classify_error(error: &eyre::Report) -> ErrorClassification {
     if let Some(reqwest_error) = error.downcast_ref::<reqwest::Error>() {
         if reqwest_error.is_timeout() {
             return ErrorClassification {
@@ -421,22 +421,6 @@ fn classify_crawler_error(error: &CrawlerError) -> ErrorClassification {
         },
         CrawlerError::Url(_) => ErrorClassification {
             error_kind: "url".to_string(),
-            retryable: false,
-        },
-        CrawlerError::Regex(_) => ErrorClassification {
-            error_kind: "regex".to_string(),
-            retryable: false,
-        },
-        CrawlerError::UserNotFound(_) | CrawlerError::IllustNotFound(_) => ErrorClassification {
-            error_kind: "not_found".to_string(),
-            retryable: false,
-        },
-        CrawlerError::MissingConfigDir(_) => ErrorClassification {
-            error_kind: "missing_config_dir".to_string(),
-            retryable: false,
-        },
-        CrawlerError::NotImplemented(_) => ErrorClassification {
-            error_kind: "not_implemented".to_string(),
             retryable: false,
         },
     }

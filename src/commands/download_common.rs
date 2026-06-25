@@ -22,21 +22,23 @@ use crate::{
     replay::{ReplayExecutionReport, replay_failures_with_session},
 };
 
-pub const RANKING_SORT_ERROR: &str = "download ranking 不支持自定义排序；仅允许默认值 date_desc";
-pub const RANKING_R18_ERROR: &str =
+pub(crate) const RANKING_SORT_ERROR: &str =
+    "download ranking 不支持自定义排序；仅允许默认值 date_desc";
+pub(crate) const RANKING_R18_ERROR: &str =
     "download ranking 不支持通用 R-18 开关；请改用 ranking daily_r18 或 ranking weekly_r18";
-pub const RANKING_AI_ERROR: &str = "download ranking 不支持 AI 过滤开关；当前仅允许默认值 ai=true";
+pub(crate) const RANKING_AI_ERROR: &str =
+    "download ranking 不支持 AI 过滤开关；当前仅允许默认值 ai=true";
 const BULK_WARNING_THRESHOLD: usize = 1000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BatchProbeSummary {
+pub(crate) struct BatchProbeSummary {
     pub candidate_count: usize,
     pub count_source: &'static str,
     pub subject_label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DownloadPresentation {
+pub(crate) struct DownloadPresentation {
     pub mode_label: String,
     pub subject_label: String,
     pub candidate_count: Option<usize>,
@@ -87,7 +89,7 @@ impl fmt::Display for RankingModeChoice {
     }
 }
 
-pub fn resolve_options(
+pub(crate) fn resolve_options(
     mode: DownloadMode,
     overrides: &DownloadOverrides,
 ) -> AppResult<ResolvedDownloadOptions> {
@@ -96,11 +98,11 @@ pub fn resolve_options(
     config.resolve_download_options(mode, &env, overrides)
 }
 
-pub fn load_required_credential() -> AppResult<Credential> {
+pub(crate) fn load_required_credential() -> AppResult<Credential> {
     Credential::load()?.ok_or(CrawlerError::MissingCredential.into())
 }
 
-pub fn create_shared_session(
+pub(crate) fn create_shared_session(
     options: &ResolvedDownloadOptions,
     credential: &Credential,
 ) -> AppResult<Arc<PixivNetSession>> {
@@ -113,7 +115,7 @@ pub fn create_shared_session(
     Ok(Arc::new(builder.build()?))
 }
 
-pub fn print_download_summary(target_directory: &Path, result: &DownloadResult) {
+pub(crate) fn print_download_summary(target_directory: &Path, result: &DownloadResult) {
     println!("下载目录: {}", target_directory.display());
     println!(
         "下载完成：图片总数 {}，成功 {}，跳过 {}，失败 {}",
@@ -121,7 +123,7 @@ pub fn print_download_summary(target_directory: &Path, result: &DownloadResult) 
     );
 }
 
-pub fn ensure_ranking_defaults(options: &ResolvedDownloadOptions) -> AppResult<()> {
+pub(crate) fn ensure_ranking_defaults(options: &ResolvedDownloadOptions) -> AppResult<()> {
     if options.sort != SortOrder::DateDesc {
         return Err(CrawlerError::InvalidInput(RANKING_SORT_ERROR.to_string()).into());
     }
@@ -137,11 +139,14 @@ pub fn ensure_ranking_defaults(options: &ResolvedDownloadOptions) -> AppResult<(
     Ok(())
 }
 
-pub fn resolve_layout(options: &ResolvedDownloadOptions, subject: &str) -> AppResult<OutputLayout> {
+pub(crate) fn resolve_layout(
+    options: &ResolvedDownloadOptions,
+    subject: &str,
+) -> AppResult<OutputLayout> {
     resolve_output_layout(options.mode, &options.directory, subject)
 }
 
-pub fn resolve_ranking_mode(mode: Option<RankingMode>) -> AppResult<String> {
+pub(crate) fn resolve_ranking_mode(mode: Option<RankingMode>) -> AppResult<String> {
     if let Some(mode) = mode {
         return Ok(mode.as_api_mode().to_string());
     }
@@ -153,7 +158,7 @@ pub fn resolve_ranking_mode(mode: Option<RankingMode>) -> AppResult<String> {
     Ok(selected.as_api_mode().to_string())
 }
 
-pub async fn probe_user_count(
+pub(crate) async fn probe_user_count(
     session: &Arc<PixivNetSession>,
     user_id: &str,
 ) -> AppResult<BatchProbeSummary> {
@@ -166,7 +171,7 @@ pub async fn probe_user_count(
     })
 }
 
-pub async fn probe_keyword_count(
+pub(crate) async fn probe_keyword_count(
     session: &Arc<PixivNetSession>,
     query: &str,
     order: &str,
@@ -184,7 +189,7 @@ pub async fn probe_keyword_count(
     })
 }
 
-pub async fn probe_bookmark_count(
+pub(crate) async fn probe_bookmark_count(
     session: &Arc<PixivNetSession>,
     user_id: &str,
 ) -> AppResult<BatchProbeSummary> {
@@ -197,7 +202,7 @@ pub async fn probe_bookmark_count(
     })
 }
 
-pub async fn probe_ranking_count(
+pub(crate) async fn probe_ranking_count(
     session: &Arc<PixivNetSession>,
     mode: &str,
 ) -> AppResult<BatchProbeSummary> {
@@ -210,7 +215,7 @@ pub async fn probe_ranking_count(
     })
 }
 
-pub fn print_bulk_probe_summary(summary: &BatchProbeSummary) {
+pub(crate) fn print_bulk_probe_summary(summary: &BatchProbeSummary) {
     println!(
         "已探测到候选作品 {} 个（{}）",
         summary.candidate_count, summary.subject_label
@@ -224,7 +229,7 @@ pub fn print_bulk_probe_summary(summary: &BatchProbeSummary) {
     }
 }
 
-pub fn resolve_planned_count(
+pub(crate) fn resolve_planned_count(
     options: &ResolvedDownloadOptions,
     candidate_count: usize,
 ) -> AppResult<usize> {
@@ -267,18 +272,46 @@ pub fn resolve_planned_count(
     Ok(count)
 }
 
-pub fn render_order_label(mode: DownloadMode, sort: SortOrder) -> String {
+/// 批量下载在探测之后的统一中段：打印探测摘要、解析本次下载数、回写 count、打印配置表，
+/// 并处理 dry-run。返回 None 表示当前为 dry-run，调用方应直接返回 Ok(())。
+pub(crate) fn confirm_bulk_plan(
+    mut options: ResolvedDownloadOptions,
+    probe: &BatchProbeSummary,
+    mode_label: &str,
+    subject_label: &str,
+    target_directory: &Path,
+) -> AppResult<Option<ResolvedDownloadOptions>> {
+    print_bulk_probe_summary(probe);
+    let planned_count = resolve_planned_count(&options, probe.candidate_count)?;
+    options.count = planned_count;
+    print_download_config_table(
+        &DownloadPresentation {
+            mode_label: mode_label.to_string(),
+            subject_label: subject_label.to_string(),
+            candidate_count: Some(probe.candidate_count),
+            planned_count: Some(planned_count),
+            order_label: render_order_label(options.mode, options.sort),
+        },
+        &options,
+        target_directory,
+    );
+    if options.dry_run {
+        return Ok(None);
+    }
+    Ok(Some(options))
+}
+
+pub(crate) fn render_order_label(mode: DownloadMode, sort: SortOrder) -> String {
     match mode {
         DownloadMode::Ranking => "按 Pixiv 榜单顺序".to_string(),
         _ => match sort {
             SortOrder::DateDesc => "按发布时间从新到旧".to_string(),
             SortOrder::DateAsc => "按发布时间从旧到新".to_string(),
-            SortOrder::PopularDesc => "按热度从高到低".to_string(),
         },
     }
 }
 
-pub fn print_download_config_table(
+pub(crate) fn print_download_config_table(
     presentation: &DownloadPresentation,
     options: &ResolvedDownloadOptions,
     target_directory: &Path,
@@ -331,7 +364,7 @@ fn map_inquire_error(error: InquireError) -> eyre::Report {
     }
 }
 
-pub async fn finalize_download_result(
+pub(crate) async fn finalize_download_result(
     session: Arc<PixivNetSession>,
     command: ReplayCommand,
     mut result: DownloadResult,
@@ -384,7 +417,7 @@ fn apply_replay_report(
     result
 }
 
-pub fn build_replay_command(
+pub(crate) fn build_replay_command(
     mode: DownloadMode,
     options: &ResolvedDownloadOptions,
     subject: &str,

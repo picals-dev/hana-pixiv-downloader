@@ -17,7 +17,7 @@ const PROGRESS_BAR_TEMPLATE: &str =
 const PROGRESS_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
-pub struct DownloadProgress {
+pub(crate) struct DownloadProgress {
     bar: ProgressBar,
     state: Arc<Mutex<ProgressState>>,
     stop_refresh: Arc<AtomicBool>,
@@ -46,7 +46,7 @@ struct IllustProgressState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProgressSnapshot {
+pub(crate) struct ProgressSnapshot {
     pub downloaded_bytes: u64,
     pub bytes_per_second: u64,
     pub eta_seconds: Option<u64>,
@@ -56,7 +56,7 @@ pub struct ProgressSnapshot {
 }
 
 impl DownloadProgress {
-    pub fn new(total_units: u64, illust_unit_totals: Vec<(String, u64)>) -> Self {
+    pub(crate) fn new(total_units: u64, illust_unit_totals: Vec<(String, u64)>) -> Self {
         let bar = ProgressBar::new(total_units);
         let style = ProgressStyle::with_template(PROGRESS_BAR_TEMPLATE)
             .expect("进度条模板必须有效")
@@ -75,11 +75,7 @@ impl DownloadProgress {
         progress
     }
 
-    pub fn inc(&self, delta: u64) {
-        self.bar.inc(delta);
-    }
-
-    pub fn record_downloaded_bytes(&self, bytes: u64) {
+    pub(crate) fn record_downloaded_bytes(&self, bytes: u64) {
         if bytes == 0 {
             return;
         }
@@ -88,7 +84,7 @@ impl DownloadProgress {
         state.record_downloaded_bytes(bytes);
     }
 
-    pub fn record_unit_completion(&self, illust_id: &str, failed: bool) {
+    pub(crate) fn record_unit_completion(&self, illust_id: &str, failed: bool) {
         self.bar.inc(1);
         let snapshot = {
             let mut state = self.state.lock().expect("progress state lock poisoned");
@@ -98,16 +94,13 @@ impl DownloadProgress {
         self.bar.set_message(render_snapshot_message(snapshot));
     }
 
-    pub fn snapshot(&self) -> ProgressSnapshot {
+    #[cfg(test)]
+    fn snapshot(&self) -> ProgressSnapshot {
         let mut state = self.state.lock().expect("progress state lock poisoned");
         state.snapshot(self.bar.position(), Instant::now())
     }
 
-    pub fn set_message(&self, message: impl Into<String>) {
-        self.bar.set_message(message.into());
-    }
-
-    pub fn finish_with_message(&self, message: impl Into<String>) {
+    pub(crate) fn finish_with_message(&self, message: impl Into<String>) {
         self.stop_refresh.store(true, Ordering::Relaxed);
         self.bar.finish_with_message(message.into());
     }

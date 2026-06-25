@@ -6,17 +6,17 @@ use reqwest::{StatusCode, header::HeaderMap};
 
 use crate::error::CrawlerError;
 
-use super::{HostKind, RequestKind};
+use super::RequestKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RequestPolicy {
+pub(crate) struct RequestPolicy {
     pub timeout: Duration,
     pub base_delay: Duration,
     pub max_delay: Duration,
     pub default_cooldown: Duration,
 }
 
-pub fn policy_for(kind: RequestKind) -> RequestPolicy {
+pub(crate) fn policy_for(kind: RequestKind) -> RequestPolicy {
     match kind {
         RequestKind::ImageDownload | RequestKind::UgoiraDownload => RequestPolicy {
             timeout: Duration::from_secs(90),
@@ -40,7 +40,7 @@ pub fn policy_for(kind: RequestKind) -> RequestPolicy {
     }
 }
 
-pub fn retry_delay_for_status(
+pub(crate) fn retry_delay_for_status(
     kind: RequestKind,
     attempt: usize,
     attempt_limit: usize,
@@ -64,7 +64,7 @@ pub fn retry_delay_for_status(
     }
 }
 
-pub fn is_retryable_http_status(status: StatusCode) -> bool {
+pub(crate) fn is_retryable_http_status(status: StatusCode) -> bool {
     matches!(
         status,
         StatusCode::REQUEST_TIMEOUT
@@ -77,11 +77,11 @@ pub fn is_retryable_http_status(status: StatusCode) -> bool {
     )
 }
 
-pub fn is_cooldown_status(status: StatusCode) -> bool {
+pub(crate) fn is_cooldown_status(status: StatusCode) -> bool {
     status == StatusCode::TOO_MANY_REQUESTS
 }
 
-pub fn retry_delay_for_error(
+pub(crate) fn retry_delay_for_error(
     kind: RequestKind,
     attempt: usize,
     attempt_limit: usize,
@@ -104,7 +104,7 @@ pub fn retry_delay_for_error(
     None
 }
 
-pub fn compute_backoff_delay(kind: RequestKind, attempt: usize) -> Duration {
+pub(crate) fn compute_backoff_delay(kind: RequestKind, attempt: usize) -> Duration {
     let policy = policy_for(kind);
     let multiplier = 1u32 << attempt.min(5);
     let base_ms = policy.base_delay.as_millis() as u64;
@@ -114,7 +114,7 @@ pub fn compute_backoff_delay(kind: RequestKind, attempt: usize) -> Duration {
     Duration::from_millis(capped_ms.saturating_add(jitter_ms))
 }
 
-pub fn parse_retry_after(headers: &HeaderMap, now: SystemTime) -> Option<Duration> {
+pub(crate) fn parse_retry_after(headers: &HeaderMap, now: SystemTime) -> Option<Duration> {
     let value = headers.get("Retry-After")?.to_str().ok()?.trim();
     if value.is_empty() {
         return None;
@@ -146,11 +146,8 @@ fn stable_kind_seed(kind: RequestKind) -> u64 {
     }
 }
 
-pub fn host_timeout(kind: RequestKind) -> Duration {
-    let policy = policy_for(kind);
-    match kind.host_kind() {
-        HostKind::Metadata | HostKind::Image => policy.timeout,
-    }
+pub(crate) fn host_timeout(kind: RequestKind) -> Duration {
+    policy_for(kind).timeout
 }
 
 #[cfg(test)]

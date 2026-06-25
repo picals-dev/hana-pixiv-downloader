@@ -12,9 +12,9 @@ use crate::error::{AppResult, CrawlerError};
 
 use super::catalog::{ensure_content_length, ensure_non_empty_body};
 
-pub type TransferChunkObserver = dyn Fn(u64) + Send + Sync;
+pub(crate) type TransferChunkObserver = dyn Fn(u64) + Send + Sync;
 
-pub async fn stream_response_to_temp_file(
+pub(crate) async fn stream_response_to_temp_file(
     response: reqwest::Response,
     target_path: &Path,
     on_chunk: Option<Arc<TransferChunkObserver>>,
@@ -58,7 +58,7 @@ pub async fn stream_response_to_temp_file(
     stream_result
 }
 
-pub fn temporary_download_path(path: &Path) -> PathBuf {
+pub(crate) fn temporary_download_path(path: &Path) -> PathBuf {
     let mut extension = path
         .extension()
         .and_then(|value| value.to_str())
@@ -74,7 +74,7 @@ pub fn temporary_download_path(path: &Path) -> PathBuf {
     path.with_extension(extension)
 }
 
-pub fn ensure_file_exists_and_nonempty(path: &Path) -> Result<bool, CrawlerError> {
+pub(crate) fn ensure_file_exists_and_nonempty(path: &Path) -> Result<bool, CrawlerError> {
     match std::fs::metadata(path) {
         Ok(metadata) => Ok(metadata.is_file() && metadata.len() > 0),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),

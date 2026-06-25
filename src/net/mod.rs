@@ -9,7 +9,11 @@ mod state;
 pub(crate) mod test_hook;
 pub(crate) mod transfer;
 
-pub use catalog::{CurrentUserPage, HostKind, RequestKind};
+pub use catalog::RequestKind;
 pub use event::{NetEvent, SessionObserver};
-pub use policy::{is_cooldown_status, is_retryable_http_status};
-pub use session::{PixivNetSession, PixivNetSessionBuilder, resolve_base_url};
+pub use session::PixivNetSession;
+
+pub(crate) use catalog::HostKind;
+pub(crate) use policy::{is_cooldown_status, is_retryable_http_status};
+pub use session::PixivNetSessionBuilder;
+pub(crate) use session::resolve_base_url;

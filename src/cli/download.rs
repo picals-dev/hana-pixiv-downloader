@@ -84,7 +84,7 @@ pub struct CommonDownloadArgs {
 }
 
 impl CommonDownloadArgs {
-    pub fn to_overrides(&self) -> DownloadOverrides {
+    pub(crate) fn to_overrides(&self) -> DownloadOverrides {
         DownloadOverrides {
             directory: self.directory.clone(),
             count: self.count,
@@ -145,7 +145,7 @@ pub struct KeywordArgs {
 }
 
 impl KeywordArgs {
-    pub fn to_overrides(&self) -> DownloadOverrides {
+    pub(crate) fn to_overrides(&self) -> DownloadOverrides {
         let mut overrides = self.common.to_overrides();
         overrides.r18 = self.r18.then_some(true);
         overrides
@@ -216,7 +216,7 @@ pub struct RankingArgs {
 }
 
 impl RankingArgs {
-    pub fn to_overrides(&self) -> DownloadOverrides {
+    pub(crate) fn to_overrides(&self) -> DownloadOverrides {
         DownloadOverrides {
             directory: self.directory.clone(),
             count: self.count,
@@ -283,7 +283,7 @@ pub struct BookmarkArgs {
 }
 
 impl BookmarkArgs {
-    pub fn to_overrides(&self) -> DownloadOverrides {
+    pub(crate) fn to_overrides(&self) -> DownloadOverrides {
         DownloadOverrides {
             directory: self.directory.clone(),
             count: self.count,

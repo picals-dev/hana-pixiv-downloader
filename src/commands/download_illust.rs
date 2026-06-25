@@ -14,7 +14,7 @@ use crate::{
 };
 use std::sync::Arc;
 
-pub async fn run(args: IllustArgs) -> AppResult<()> {
+pub(crate) async fn run(args: IllustArgs) -> AppResult<()> {
     let illust_id = extract_illust_id(&args.target)?;
     let options = resolve_options(DownloadMode::Illust, &args.common.to_overrides())?;
     let layout = resolve_layout(&options, &illust_id)?;
@@ -37,7 +37,7 @@ pub async fn run(args: IllustArgs) -> AppResult<()> {
 
     let credential = load_required_credential()?;
     let session = create_shared_session(&options, &credential)?;
-    let crawler = IllustCrawler::new(illust_id, options, Arc::clone(&session))?;
+    let crawler = IllustCrawler::new(illust_id, options, Arc::clone(&session));
     let result = crawler.run().await?;
     let result = finalize_download_result(
         session,

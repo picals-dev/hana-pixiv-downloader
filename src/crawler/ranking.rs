@@ -5,9 +5,7 @@ use std::sync::Arc;
 use crate::{
     config::{DownloadMode, ResolvedDownloadOptions},
     crawler::CrawlContext,
-    crawler::shared::{
-        download_artworks, export_tags_json, plan_artworks_for_illust_ids, sort_illust_ids,
-    },
+    crawler::shared::{plan_tags_and_download, sort_illust_ids},
     downloader::DownloadResult,
     error::AppResult,
     net::PixivNetSession,
@@ -18,23 +16,11 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct RankingCrawler {
     pub mode: String,
-    pub context: CrawlContext,
+    pub(crate) context: CrawlContext,
 }
 
 impl RankingCrawler {
     pub fn new(
-        mode: String,
-        mut options: ResolvedDownloadOptions,
-        session: Arc<PixivNetSession>,
-    ) -> AppResult<Self> {
-        options.mode = DownloadMode::Ranking;
-        Ok(Self {
-            mode,
-            context: CrawlContext::new(options, session),
-        })
-    }
-
-    pub fn new_with_session(
         mode: String,
         mut options: ResolvedDownloadOptions,
         session: Arc<PixivNetSession>,
@@ -75,30 +61,12 @@ impl RankingCrawler {
             &self.context.options.directory,
             &self.mode,
         )?;
-        let planned = plan_artworks_for_illust_ids(
+        plan_tags_and_download(
             &self.context.session,
-            illust_ids.clone(),
+            illust_ids,
             &layout,
             &self.context.options,
         )
-        .await;
-        let mut failure_records = planned.failures;
-        failure_records.extend(export_tags_json(
-            &planned.detail_cache,
-            layout.context_dir(),
-            &self.context.options,
-        ));
-        let mut result = download_artworks(
-            self.context.options.clone(),
-            layout.context_dir().to_path_buf(),
-            Arc::clone(&self.context.session),
-            &planned.plans,
-        )
-        .await?;
-        result.failed += failure_records.len();
-        result.total += failure_records.len();
-        result.failure_records.extend(failure_records);
-
-        Ok(result)
+        .await
     }
 }

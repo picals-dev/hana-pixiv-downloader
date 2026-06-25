@@ -23,13 +23,13 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Default)]
-pub struct PlannedArtworkBatch {
+pub(crate) struct PlannedArtworkBatch {
     pub plans: Vec<ArtworkDownloadPlan>,
     pub detail_cache: BTreeMap<String, Value>,
     pub failures: Vec<FailureRecord>,
 }
 
-pub async fn plan_artworks_for_illust_ids(
+pub(crate) async fn plan_artworks_for_illust_ids(
     session: &Arc<PixivNetSession>,
     illust_ids: Vec<String>,
     layout: &OutputLayout,
@@ -79,7 +79,7 @@ pub async fn plan_artworks_for_illust_ids(
     }
 }
 
-pub fn export_tags_json(
+pub(crate) fn export_tags_json(
     detail_cache: &BTreeMap<String, Value>,
     output_directory: &Path,
     options: &ResolvedDownloadOptions,
@@ -130,7 +130,7 @@ pub fn export_tags_json(
     failures
 }
 
-pub async fn export_tags_json_for_illust_ids(
+pub(crate) async fn export_tags_json_for_illust_ids(
     session: &Arc<PixivNetSession>,
     illust_ids: &[String],
     output_directory: &Path,
@@ -146,7 +146,7 @@ pub async fn export_tags_json_for_illust_ids(
     failures
 }
 
-pub fn write_tags_json(
+pub(crate) fn write_tags_json(
     output_directory: &Path,
     tag_map: &BTreeMap<String, Vec<String>>,
 ) -> AppResult<()> {
@@ -156,7 +156,7 @@ pub fn write_tags_json(
     Ok(())
 }
 
-pub fn sort_illust_ids(illust_ids: &mut [String], sort: SortOrder) -> AppResult<()> {
+pub(crate) fn sort_illust_ids(illust_ids: &mut [String], sort: SortOrder) -> AppResult<()> {
     let mut keyed = illust_ids
         .iter()
         .map(|id| {
@@ -179,7 +179,7 @@ pub fn sort_illust_ids(illust_ids: &mut [String], sort: SortOrder) -> AppResult<
     Ok(())
 }
 
-pub async fn download_artworks(
+pub(crate) async fn download_artworks(
     options: ResolvedDownloadOptions,
     output_directory: std::path::PathBuf,
     session: Arc<PixivNetSession>,
@@ -187,6 +187,37 @@ pub async fn download_artworks(
 ) -> AppResult<DownloadResult> {
     let downloader = Downloader::new(options, output_directory, session);
     downloader.download(plans).await
+}
+
+/// 作品 ID 就绪后的统一收尾：规划作品计划、导出 tags、下载，并合并采集/标签阶段的失败计数。
+///
+/// 五类下载模式只在“如何收集 illust_ids”上有差异，收尾逻辑完全一致，统一收口到此处，
+/// 避免各 crawler 手抄失败计数导致的静默偏差。
+pub(crate) async fn plan_tags_and_download(
+    session: &Arc<PixivNetSession>,
+    illust_ids: Vec<String>,
+    layout: &OutputLayout,
+    options: &ResolvedDownloadOptions,
+) -> AppResult<DownloadResult> {
+    let planned = plan_artworks_for_illust_ids(session, illust_ids, layout, options).await;
+    let mut failure_records = planned.failures;
+    failure_records.extend(export_tags_json(
+        &planned.detail_cache,
+        layout.context_dir(),
+        options,
+    ));
+
+    let mut result = download_artworks(
+        options.clone(),
+        layout.context_dir().to_path_buf(),
+        Arc::clone(session),
+        &planned.plans,
+    )
+    .await?;
+    result.failed += failure_records.len();
+    result.total += failure_records.len();
+    result.failure_records.extend(failure_records);
+    Ok(result)
 }
 
 async fn fetch_illust_details(

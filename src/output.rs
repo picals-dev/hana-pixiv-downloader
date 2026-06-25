@@ -11,22 +11,17 @@ const KEYWORD_SEGMENT_MAX_LEN: usize = 80;
 const HASH_SUFFIX_LEN: usize = 9;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OutputLayout {
+pub(crate) struct OutputLayout {
     mode: DownloadMode,
-    root: PathBuf,
     context_dir: PathBuf,
 }
 
 impl OutputLayout {
-    pub fn context_dir(&self) -> &Path {
+    pub(crate) fn context_dir(&self) -> &Path {
         &self.context_dir
     }
 
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
-    pub fn illust_dir(&self, illust_id: &str) -> AppResult<PathBuf> {
+    pub(crate) fn illust_dir(&self, illust_id: &str) -> AppResult<PathBuf> {
         let illust_id = validate_controlled_segment("illustId", illust_id)?;
 
         Ok(match self.mode {
@@ -39,12 +34,11 @@ impl OutputLayout {
     }
 }
 
-pub fn resolve_output_layout(
+pub(crate) fn resolve_output_layout(
     mode: DownloadMode,
     root: &Path,
     subject: &str,
 ) -> AppResult<OutputLayout> {
-    let root = root.to_path_buf();
     let context_dir = match mode {
         DownloadMode::Illust => root.join(validate_controlled_segment("illustId", subject)?),
         DownloadMode::User => root.join(validate_controlled_segment("userId", subject)?),
@@ -53,11 +47,7 @@ pub fn resolve_output_layout(
         DownloadMode::Ranking => root.join(validate_controlled_segment("ranking mode", subject)?),
     };
 
-    Ok(OutputLayout {
-        mode,
-        root,
-        context_dir,
-    })
+    Ok(OutputLayout { mode, context_dir })
 }
 
 fn validate_controlled_segment<'a>(label: &str, value: &'a str) -> AppResult<&'a str> {

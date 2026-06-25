@@ -3,11 +3,9 @@
 use crate::{
     cli::download::RankingArgs,
     commands::download_common::{
-        DownloadPresentation, build_replay_command, create_shared_session, ensure_ranking_defaults,
-        finalize_download_result, load_required_credential, print_bulk_probe_summary,
-        print_download_config_table, print_download_summary, probe_ranking_count,
-        render_order_label, resolve_layout, resolve_options, resolve_planned_count,
-        resolve_ranking_mode,
+        build_replay_command, confirm_bulk_plan, create_shared_session, ensure_ranking_defaults,
+        finalize_download_result, load_required_credential, print_download_summary,
+        probe_ranking_count, resolve_layout, resolve_options, resolve_ranking_mode,
     },
     config::DownloadMode,
     crawler::ranking::RankingCrawler,
@@ -15,7 +13,7 @@ use crate::{
 };
 use std::sync::Arc;
 
-pub async fn run(args: RankingArgs) -> AppResult<()> {
+pub(crate) async fn run(args: RankingArgs) -> AppResult<()> {
     let options = resolve_options(DownloadMode::Ranking, &args.to_overrides())?;
     ensure_ranking_defaults(&options)?;
     let mode = resolve_ranking_mode(args.mode)?;
@@ -24,27 +22,12 @@ pub async fn run(args: RankingArgs) -> AppResult<()> {
     let credential = load_required_credential()?;
     let session = create_shared_session(&options, &credential)?;
     let probe = probe_ranking_count(&session, &mode).await?;
-    print_bulk_probe_summary(&probe);
-    let planned_count = resolve_planned_count(&options, probe.candidate_count)?;
-    let mut options = options;
-    options.count = planned_count;
-    print_download_config_table(
-        &DownloadPresentation {
-            mode_label: "排行榜下载".to_string(),
-            subject_label: mode.clone(),
-            candidate_count: Some(probe.candidate_count),
-            planned_count: Some(planned_count),
-            order_label: render_order_label(DownloadMode::Ranking, options.sort),
-        },
-        &options,
-        &target_directory,
-    );
-
-    if options.dry_run {
+    let Some(options) = confirm_bulk_plan(options, &probe, "排行榜下载", &mode, &target_directory)?
+    else {
         return Ok(());
-    }
+    };
 
-    let crawler = RankingCrawler::new(mode, options, Arc::clone(&session))?;
+    let crawler = RankingCrawler::new(mode, options, Arc::clone(&session));
     let result = crawler.run().await?;
     let result = finalize_download_result(
         session,

@@ -1,6 +1,6 @@
 //! 下载模块骨架。
 
-pub mod image;
+pub(crate) mod image;
 pub mod ugoira;
 
 use std::{
@@ -38,14 +38,14 @@ pub struct DownloadResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImageArtworkPlan {
+pub(crate) struct ImageArtworkPlan {
     pub illust_id: String,
     pub image_urls: Vec<String>,
     pub target_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UgoiraDownloadPlan {
+pub(crate) struct UgoiraDownloadPlan {
     pub illust_id: String,
     pub source_url: String,
     pub target_path: PathBuf,
@@ -53,20 +53,20 @@ pub struct UgoiraDownloadPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ArtworkDownloadPlan {
+pub(crate) enum ArtworkDownloadPlan {
     Images(ImageArtworkPlan),
     Ugoira(UgoiraDownloadPlan),
 }
 
 impl ArtworkDownloadPlan {
-    pub fn illust_id(&self) -> &str {
+    pub(crate) fn illust_id(&self) -> &str {
         match self {
             Self::Images(plan) => &plan.illust_id,
             Self::Ugoira(plan) => &plan.illust_id,
         }
     }
 
-    pub fn output_count(&self) -> u64 {
+    pub(crate) fn output_count(&self) -> u64 {
         match self {
             Self::Images(plan) => plan.image_urls.len() as u64,
             Self::Ugoira(_) => 1,
@@ -75,14 +75,14 @@ impl ArtworkDownloadPlan {
 }
 
 #[derive(Debug, Clone)]
-pub struct Downloader {
+pub(crate) struct Downloader {
     pub options: ResolvedDownloadOptions,
     pub directory: PathBuf,
     session: Arc<PixivNetSession>,
 }
 
 impl Downloader {
-    pub fn new(
+    pub(crate) fn new(
         options: ResolvedDownloadOptions,
         directory: PathBuf,
         session: Arc<PixivNetSession>,
@@ -94,7 +94,10 @@ impl Downloader {
         }
     }
 
-    pub async fn download(&self, plans: &[ArtworkDownloadPlan]) -> AppResult<DownloadResult> {
+    pub(crate) async fn download(
+        &self,
+        plans: &[ArtworkDownloadPlan],
+    ) -> AppResult<DownloadResult> {
         if plans.is_empty() {
             return Ok(DownloadResult::default());
         }
