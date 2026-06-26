@@ -1,34 +1,6 @@
 # hana-pixiv-downloader
 
-`hana-pixiv-downloader` 是一个面向中文用户、开箱即用的 Pixiv 图片下载 CLI。
-
-- 安装包名是 `hana-pixiv-downloader`
-- 实际命令名是 `hpd`
-- 支持用户作品、关键词、排行榜、单作品、收藏下载
-- 支持直接粘贴 Pixiv URL
-- 支持 ugoira 自动导出 GIF
-- 支持代理、`--dry-run`、`tags.json` 导出、失败重试
-
-## 安装
-
-### 通过 Cargo
-
-```bash
-cargo install hana-pixiv-downloader --locked
-```
-
-需要 Rust 1.85 或更高版本。
-
-### 通过 GitHub Releases
-
-从 [GitHub Releases](https://github.com/picals-dev/hana-pixiv-downloader/releases) 下载对应平台的预编译二进制，并将 `hpd` 加入 `PATH`。
-
-当前发布目标：
-
-- macOS `aarch64`
-- macOS `x86_64`
-- Linux `x86_64`
-- Windows `x86_64`
+基于 Rust 的轻量 Pixiv CLI 下载器。
 
 ## 快速开始
 
@@ -38,7 +10,7 @@ cargo install hana-pixiv-downloader --locked
 hpd setup
 ```
 
-`setup` 会引导你填写 `PHPSESSID`，自动探测当前账号 `user_id`，并初始化下载目录、并发、超时、重试和代理等配置。
+填写 `PHPSESSID`，自动探测当前账号 `user_id`，并初始化下载目录、并发、超时、重试和代理等配置。
 
 ## 常用命令
 
@@ -47,7 +19,7 @@ hpd setup
 ```bash
 hpd download "https://www.pixiv.net/users/12345678"
 hpd download "https://www.pixiv.net/artworks/12345678"
-hpd download "https://www.pixiv.net/tags/%E5%88%9D%E9%9F%B3%E3%83%9F%E3%82%AF/artworks"
+hpd download "https://www.pixiv.net/tags/初音ミク/artworks"
 ```
 
 ### 下载指定画师
@@ -116,7 +88,7 @@ hpd config set auth.user_id <USER_ID>
 hpd retry /path/to/failures.toml
 ```
 
-当批量下载里仍有可重试失败项时，工具会写出 manifest，后续可直接用 `retry` 回放。
+当批量下载里仍有可重试失败项时，工具会生成 manifest，后续如果想要再重试可直接凭此 `retry`。
 
 ## 常用选项
 
@@ -144,9 +116,9 @@ hpd retry /path/to/failures.toml
 CLI 参数 > 环境变量 > config.toml > 默认值
 ```
 
-默认配置目录：
+默认配置目录（可通过 `XDG_CONFIG_HOME` 覆盖）：
 
-- macOS / Linux：`${XDG_CONFIG_HOME:-~/.config}/hana-pixiv-downloader/`
+- macOS / Linux：`~/.config/hana-pixiv-downloader/`
 - Windows：`%AppData%\\hana-pixiv-downloader\\`
 
 其中：
@@ -175,26 +147,6 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 
 常用环境变量：
 
-- `HTTPS_PROXY`
-- `HPD_PROXY_URL`
-- `XDG_CONFIG_HOME`
-
-## 输出与行为
-
-- 静态作品会按作品目录落盘图片文件
-- ugoira 作品会自动导出为 GIF
-- `--with-tags` 会在批次目录写出 `tags.json`
-- 重新执行同一条下载命令即可跳过已存在文件并继续补齐
-
-## 注意事项
-
-- `setup` 和 `config show` 会明文显示凭据，避免在录屏或共享屏幕时操作
-- 请仅在遵守 Pixiv 服务条款与原作者授权范围内使用本工具
-
-## 帮助
-
-```bash
-hpd --help
-hpd download --help
-hpd config --help
-```
+- `HTTPS_PROXY`：通用 HTTPS 代理地址；未设置 `HPD_PROXY_URL` 时作为请求代理的回退值。
+- `HPD_PROXY_URL`：本工具专用代理地址；优先级高于 `HTTPS_PROXY`。
+- `XDG_CONFIG_HOME`：配置根目录；程序会在其下使用 `hana-pixiv-downloader/` 目录读写配置与凭据。
