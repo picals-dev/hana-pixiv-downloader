@@ -550,9 +550,7 @@ mod tests {
                 stage: FailureStage::Convert,
                 illust_id: Some("123456".to_string()),
                 source_url: Some("https://example.com/ugoira.zip".to_string()),
-                target_path: Some(
-                    "/tmp/hpd/123456/.hpd-workspace/output.gif.part".to_string(),
-                ),
+                target_path: Some("/tmp/hpd/123456/.hpd-workspace/output.gif.part".to_string()),
                 error_kind: "convert".to_string(),
                 error_message: "broken".to_string(),
                 retryable: true,

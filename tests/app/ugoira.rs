@@ -278,13 +278,7 @@ async fn illust_crawler_downloads_ugoira_gif_and_cleans_workspace() {
     assert_eq!(result.failed, 0);
     assert!(gif_path.exists());
     assert_gif_file(&gif_path);
-    assert!(
-        !temp
-            .path()
-            .join(UGOIRA_ID)
-            .join(".hpd-workspace")
-            .exists()
-    );
+    assert!(!temp.path().join(UGOIRA_ID).join(".hpd-workspace").exists());
 }
 
 #[tokio::test]
@@ -312,13 +306,7 @@ async fn illust_crawler_records_convert_failure_and_cleans_workspace() {
         result.failure_records[0].source_url.as_deref(),
         Some(ugoira_zip_url(&server).as_str())
     );
-    assert!(
-        !temp
-            .path()
-            .join(UGOIRA_ID)
-            .join(".hpd-workspace")
-            .exists()
-    );
+    assert!(!temp.path().join(UGOIRA_ID).join(".hpd-workspace").exists());
     assert!(
         !temp
             .path()

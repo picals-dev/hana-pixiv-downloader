@@ -2,9 +2,24 @@
 name = "hana-pixiv-downloader"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "开箱即用的 Pixiv 图片下载 CLI 工具"
 authors = ["nonhana"]
 license = "MIT"
+readme = "README.md"
+repository = "https://github.com/picals-dev/hana-pixiv-downloader"
+homepage = "https://github.com/picals-dev/hana-pixiv-downloader"
+documentation = "https://docs.rs/hana-pixiv-downloader"
+keywords = ["pixiv", "cli", "downloader", "ugoira", "images"]
+categories = ["command-line-utilities"]
+include = [
+    "/src/**",
+    "/tests/**",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/LICENSE",
+]
 default-run = "hpd"
 autobins = false
 
