@@ -1,0 +1,31 @@
+name: verify
+
+on:
+  push:
+    tags-ignore:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fmt-clippy:
+    name: fmt-clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7.0.0
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 缓存 Cargo
+        uses: Swatinem/rust-cache@v2.9.1
+
+      - name: 检查格式
+        run: cargo fmt --all --check
+
+      - name: 运行 Clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings

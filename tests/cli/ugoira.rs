@@ -156,12 +156,7 @@ async fn illust_ugoira_download_writes_final_gif() {
             .join(format!("{UGOIRA_ID}.gif"))
             .exists()
     );
-    assert!(
-        !output_root
-            .join(UGOIRA_ID)
-            .join(".hpd-workspace")
-            .exists()
-    );
+    assert!(!output_root.join(UGOIRA_ID).join(".hpd-workspace").exists());
 }
 
 #[tokio::test]

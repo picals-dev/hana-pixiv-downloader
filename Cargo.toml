@@ -2,9 +2,21 @@
 name = "hana-pixiv-downloader"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "开箱即用的 Pixiv 图片下载 CLI 工具"
 authors = ["nonhana"]
 license = "MIT"
+readme = "README.md"
+repository = "https://github.com/picals-dev/hana-pixiv-downloader"
+keywords = ["pixiv", "cli", "downloader", "ugoira", "images"]
+categories = ["command-line-utilities"]
+include = [
+    "/src/**",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/LICENSE",
+]
 default-run = "hpd"
 autobins = false
 
@@ -13,10 +25,10 @@ name = "hpd"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "fs", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util"] }
 reqwest = { version = "0.12", default-features = false, features = ["http2", "socks", "cookies", "rustls-tls", "charset", "json", "stream"] }
 clap = { version = "4", features = ["derive", "wrap_help"] }
-inquire = "0.7"
+inquire = { version = "0.7", default-features = false, features = ["crossterm"] }
 indicatif = "0.17"
 comfy-table = "7"
 serde = { version = "1", features = ["derive"] }
@@ -26,11 +38,11 @@ eyre = "0.6"
 thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
-jiff = "0.1"
+jiff = { version = "0.1", default-features = false, features = ["std"] }
 regex = "1"
 dirs-next = "2"
 url = "2"
-futures = "0.3"
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 gif = "0.14"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
@@ -41,3 +53,9 @@ tempfile = "3"
 tokio-test = "0.4"
 assert_cmd = "2"
 predicates = "3"
+
+[profile.release]
+codegen-units = 1
+debug = 0
+lto = true
+strip = true
