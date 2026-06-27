@@ -241,7 +241,16 @@ mod tests {
         )
         .unwrap();
 
-        let context = layout.context_dir().to_string_lossy();
-        assert!(context.starts_with("/tmp/keyword-root/初音_ミク-"));
+        assert_eq!(
+            layout.context_dir().parent(),
+            Some(Path::new("/tmp/keyword-root"))
+        );
+
+        let context_name = layout
+            .context_dir()
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap();
+        assert!(context_name.starts_with("初音_ミク-"));
     }
 }

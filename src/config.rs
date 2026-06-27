@@ -576,17 +576,9 @@ url = ""
         .unwrap();
 
         let config = Config::load_from(&path).unwrap();
+        let expected = DownloadRootsConfig::from_seed("~/Downloads/LegacyPixiv");
 
-        assert_eq!(
-            config.download.roots,
-            DownloadRootsConfig {
-                illust: "~/Downloads/LegacyPixiv/illust".to_string(),
-                user: "~/Downloads/LegacyPixiv/user".to_string(),
-                bookmark: "~/Downloads/LegacyPixiv/bookmark".to_string(),
-                keyword: "~/Downloads/LegacyPixiv/keyword".to_string(),
-                ranking: "~/Downloads/LegacyPixiv/ranking".to_string(),
-            }
-        );
+        assert_eq!(config.download.roots, expected);
         assert_eq!(config.download.count, 5);
     }
 
@@ -607,14 +599,12 @@ keyword = "~/CustomKeyword"
         .unwrap();
 
         let config = Config::load_from(&path).unwrap();
+        let expected = DownloadRootsConfig::from_seed("~/Downloads/LegacyPixiv");
 
         assert_eq!(config.download.roots.illust, "~/CustomIllust");
         assert_eq!(config.download.roots.keyword, "~/CustomKeyword");
-        assert_eq!(config.download.roots.user, "~/Downloads/LegacyPixiv/user");
-        assert_eq!(
-            config.download.roots.bookmark,
-            "~/Downloads/LegacyPixiv/bookmark"
-        );
+        assert_eq!(config.download.roots.user, expected.user);
+        assert_eq!(config.download.roots.bookmark, expected.bookmark);
     }
 
     #[test]
