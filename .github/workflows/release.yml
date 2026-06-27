@@ -113,3 +113,4 @@ jobs:
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
             SHA256SUMS.txt
+          token: ${{ secrets.PICALS_GITHUB_TOKEN }}
