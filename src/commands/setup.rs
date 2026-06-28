@@ -150,35 +150,85 @@ fn prompt_user_id(default_user_id: Option<&str>) -> AppResult<String> {
 
 fn prompt_download_roots(current: &DownloadRootsConfig) -> AppResult<DownloadRootsConfig> {
     println!();
-    println!("下面开始配置五种下载模式对应的根目录。");
+    println!("先配置统一下载根目录。");
+    let current_root = infer_download_root_seed(current);
+    let root_input = prompt_optional_text(
+        "统一下载根目录",
+        if current_root.is_some() {
+            "直接回车保持当前统一 root；若修改，会自动更新下面五个目录的默认值"
+        } else {
+            "留空表示保留当前五个目录不变；填写后会自动派生下面五个目录的默认值"
+        },
+        current_root.as_deref().unwrap_or_default(),
+    )?;
+    let defaults = derive_setup_download_roots(current, &root_input);
+
+    println!("下面开始确认五种下载模式对应的根目录。");
 
     Ok(DownloadRootsConfig {
         illust: prompt_text(
             "作品下载根目录（illust）",
             "用于 download illust 的根目录；最终会继续追加作品目录",
-            &current.illust,
+            &defaults.illust,
         )?,
         user: prompt_text(
             "画师下载根目录（user）",
             "用于 download user 的根目录；最终会继续追加 userId/作品目录",
-            &current.user,
+            &defaults.user,
         )?,
         bookmark: prompt_text(
             "收藏下载根目录（bookmark）",
             "用于 download bookmark 的根目录；最终会继续追加 userId/作品目录",
-            &current.bookmark,
+            &defaults.bookmark,
         )?,
         keyword: prompt_text(
             "关键词下载根目录（keyword）",
             "用于 download keyword 的根目录；最终会继续追加关键词目录/作品目录",
-            &current.keyword,
+            &defaults.keyword,
         )?,
         ranking: prompt_text(
             "排行榜下载根目录（ranking）",
             "用于 download ranking 的根目录；最终会继续追加 mode/作品目录",
-            &current.ranking,
+            &defaults.ranking,
         )?,
     })
+}
+
+fn infer_download_root_seed(current: &DownloadRootsConfig) -> Option<String> {
+    let illust = strip_mode_suffix(&current.illust, "illust")?;
+    let user = strip_mode_suffix(&current.user, "user")?;
+    let bookmark = strip_mode_suffix(&current.bookmark, "bookmark")?;
+    let keyword = strip_mode_suffix(&current.keyword, "keyword")?;
+    let ranking = strip_mode_suffix(&current.ranking, "ranking")?;
+
+    if illust == user && user == bookmark && bookmark == keyword && keyword == ranking {
+        Some(illust)
+    } else {
+        None
+    }
+}
+
+fn derive_setup_download_roots(
+    current: &DownloadRootsConfig,
+    root_input: &str,
+) -> DownloadRootsConfig {
+    let trimmed = root_input.trim();
+    if trimmed.is_empty() {
+        current.clone()
+    } else {
+        DownloadRootsConfig::from_seed(trimmed)
+    }
+}
+
+fn strip_mode_suffix(path: &str, mode: &str) -> Option<String> {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    let slash_suffix = format!("/{mode}");
+    let backslash_suffix = format!("\\{mode}");
+
+    trimmed
+        .strip_suffix(&slash_suffix)
+        .or_else(|| trimmed.strip_suffix(&backslash_suffix))
+        .map(ToOwned::to_owned)
 }
 
 fn prompt_text(message: &str, help: &str, default: &str) -> AppResult<String> {
@@ -420,7 +470,10 @@ mod tests {
         config::{DownloadConfig, DownloadMode, SortOrder},
     };
 
-    use super::{fetch_current_user_id_with_base_url, prompt_user_id, render_sort};
+    use super::{
+        derive_setup_download_roots, fetch_current_user_id_with_base_url, infer_download_root_seed,
+        prompt_user_id, render_sort,
+    };
 
     fn options(directory: PathBuf) -> super::ResolvedDownloadOptions {
         let defaults = DownloadConfig::default();
@@ -524,5 +577,61 @@ mod tests {
     fn placeholder_compiles_for_interactive_user_id_contract() {
         let _ = prompt_user_id as fn(Option<&str>) -> crate::error::AppResult<String>;
         let _ = eyre!("保持测试模块导入活跃");
+    }
+
+    #[test]
+    fn infer_download_root_seed_returns_shared_root() {
+        let roots = crate::config::DownloadRootsConfig::from_seed("~/Pictures/Pixiv");
+
+        assert_eq!(
+            infer_download_root_seed(&roots).as_deref(),
+            Some("~/Pictures/Pixiv")
+        );
+    }
+
+    #[test]
+    fn infer_download_root_seed_returns_none_for_mixed_roots() {
+        let roots = crate::config::DownloadRootsConfig {
+            illust: "~/Pictures/Pixiv/illust".to_string(),
+            user: "~/Downloads/Pixiv/user".to_string(),
+            bookmark: "~/Pictures/Pixiv/bookmark".to_string(),
+            keyword: "~/Pictures/Pixiv/keyword".to_string(),
+            ranking: "~/Pictures/Pixiv/ranking".to_string(),
+        };
+
+        assert_eq!(infer_download_root_seed(&roots), None);
+    }
+
+    #[test]
+    fn derive_setup_download_roots_uses_root_input_as_seed() {
+        let current = crate::config::DownloadRootsConfig {
+            illust: "/tmp/custom-illust".to_string(),
+            user: "/tmp/custom-user".to_string(),
+            bookmark: "/tmp/custom-bookmark".to_string(),
+            keyword: "/tmp/custom-keyword".to_string(),
+            ranking: "/tmp/custom-ranking".to_string(),
+        };
+
+        let derived = derive_setup_download_roots(&current, "/data/pixiv");
+
+        assert_eq!(
+            derived,
+            crate::config::DownloadRootsConfig::from_seed("/data/pixiv")
+        );
+    }
+
+    #[test]
+    fn derive_setup_download_roots_keeps_current_roots_when_input_is_empty() {
+        let current = crate::config::DownloadRootsConfig {
+            illust: "/tmp/custom-illust".to_string(),
+            user: "/tmp/custom-user".to_string(),
+            bookmark: "/tmp/custom-bookmark".to_string(),
+            keyword: "/tmp/custom-keyword".to_string(),
+            ranking: "/tmp/custom-ranking".to_string(),
+        };
+
+        let derived = derive_setup_download_roots(&current, "   ");
+
+        assert_eq!(derived, current);
     }
 }

@@ -13,8 +13,6 @@ use crate::error::{AppResult, CrawlerError};
 const CONFIG_DIR_NAME: &str = "hana-pixiv-downloader";
 const CONFIG_FILE_NAME: &str = "config.toml";
 const CREDENTIAL_FILE_NAME: &str = "credentials";
-const DEFAULT_DOWNLOAD_DIRECTORY: &str = "~/Pictures/Pixiv";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SortOrder {
@@ -44,7 +42,8 @@ pub(crate) struct DownloadRootsConfig {
 
 impl Default for DownloadRootsConfig {
     fn default() -> Self {
-        Self::from_seed(DEFAULT_DOWNLOAD_DIRECTORY)
+        let seed = default_download_root_seed();
+        Self::from_seed(&seed)
     }
 }
 
@@ -314,8 +313,9 @@ impl Config {
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .unwrap_or(DEFAULT_DOWNLOAD_DIRECTORY);
-        let root_defaults = DownloadRootsConfig::from_seed(seed);
+            .map(str::to_owned)
+            .unwrap_or_else(default_download_root_seed);
+        let root_defaults = DownloadRootsConfig::from_seed(&seed);
         let roots = raw
             .download
             .roots
@@ -447,6 +447,19 @@ fn validate_non_empty_path(key: &str, value: &str) -> AppResult<()> {
     Ok(())
 }
 
+fn default_download_root_seed() -> String {
+    build_default_download_root(dirs_next::picture_dir(), dirs_next::home_dir())
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn build_default_download_root(picture_dir: Option<PathBuf>, home_dir: Option<PathBuf>) -> PathBuf {
+    picture_dir
+        .or_else(|| home_dir.map(|path| path.join("Pictures")))
+        .unwrap_or_else(|| PathBuf::from("~/Pictures"))
+        .join("Pixiv")
+}
+
 fn join_root_seed(seed: &str, suffix: &str) -> String {
     let seed = seed.trim();
     if seed.is_empty() {
@@ -484,6 +497,7 @@ mod tests {
 
     use super::{
         Config, DownloadMode, DownloadOverrides, DownloadRootsConfig, EnvOverrides, SortOrder,
+        build_default_download_root, default_download_root_seed, join_root_seed,
     };
 
     #[test]
@@ -538,6 +552,7 @@ mod tests {
         let mut config = Config::default();
         config.download.count = 99;
         config.proxy.url = "socks5://127.0.0.1:1080".to_string();
+        let default_root = default_download_root_seed();
 
         let resolved = config
             .resolve_download_options(
@@ -551,7 +566,7 @@ mod tests {
         assert_eq!(resolved.sort, SortOrder::DateDesc);
         assert_eq!(
             resolved.directory,
-            super::expand_home_dir(Path::new("~/Pictures/Pixiv/keyword")).unwrap()
+            super::expand_home_dir(Path::new(&join_root_seed(&default_root, "keyword"))).unwrap()
         );
         assert_eq!(
             resolved.proxy_url.as_deref(),
@@ -618,5 +633,29 @@ keyword = "~/CustomKeyword"
 
         assert!(saved.contains("[download.roots]"));
         assert!(!saved.contains("directory = "));
+    }
+
+    #[test]
+    fn default_download_root_prefers_picture_directory() {
+        let root = build_default_download_root(
+            Some(PathBuf::from("/Volumes/Data/Pictures")),
+            Some(PathBuf::from("/Users/alice")),
+        );
+
+        assert_eq!(root, PathBuf::from("/Volumes/Data/Pictures/Pixiv"));
+    }
+
+    #[test]
+    fn default_download_root_falls_back_to_home_pictures() {
+        let root = build_default_download_root(None, Some(PathBuf::from("/Users/alice")));
+
+        assert_eq!(root, PathBuf::from("/Users/alice/Pictures/Pixiv"));
+    }
+
+    #[test]
+    fn default_download_root_uses_tilde_fallback_when_no_system_directory_exists() {
+        let root = build_default_download_root(None, None);
+
+        assert_eq!(root, PathBuf::from("~/Pictures/Pixiv"));
     }
 }
