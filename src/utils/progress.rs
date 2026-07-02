@@ -14,6 +14,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 const PROGRESS_BAR_TEMPLATE: &str =
     "[{elapsed_precise}] {bar:40.cyan/blue} 总图片 {pos}/{len} | {msg}";
+const ORGANIZE_PROGRESS_BAR_TEMPLATE: &str =
+    "[{elapsed_precise}] {bar:40.cyan/blue} 总作品 {pos}/{len} | {msg}";
 const PROGRESS_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
@@ -21,6 +23,12 @@ pub(crate) struct DownloadProgress {
     bar: ProgressBar,
     state: Arc<Mutex<ProgressState>>,
     stop_refresh: Arc<AtomicBool>,
+}
+
+#[derive(Clone)]
+pub(crate) struct OrganizeProgress {
+    bar: ProgressBar,
+    state: Arc<Mutex<OrganizeProgressState>>,
 }
 
 #[derive(Debug)]
@@ -43,6 +51,14 @@ struct IllustProgressState {
     completed_units: u64,
     has_failure: bool,
     handled: bool,
+}
+
+#[derive(Debug, Default)]
+struct OrganizeProgressState {
+    moved_files: u64,
+    skipped_files: u64,
+    conflicts: u64,
+    unknown_files: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,6 +153,46 @@ impl DownloadProgress {
                 }
             })
             .expect("进度刷新线程必须可以启动");
+    }
+}
+
+impl OrganizeProgress {
+    pub(crate) fn new(total_artworks: u64, unknown_files: u64) -> Self {
+        let bar = ProgressBar::new(total_artworks);
+        let style = ProgressStyle::with_template(ORGANIZE_PROGRESS_BAR_TEMPLATE)
+            .expect("整理进度条模板必须有效")
+            .progress_chars("=> ");
+        bar.set_style(style);
+
+        let state = OrganizeProgressState {
+            unknown_files,
+            ..OrganizeProgressState::default()
+        };
+        bar.set_message(render_organize_snapshot(&state));
+
+        Self {
+            bar,
+            state: Arc::new(Mutex::new(state)),
+        }
+    }
+
+    pub(crate) fn record_artwork(&self, moved_files: u64, skipped_files: u64, conflicts: u64) {
+        self.bar.inc(1);
+        let message = {
+            let mut state = self
+                .state
+                .lock()
+                .expect("organize progress state lock poisoned");
+            state.moved_files += moved_files;
+            state.skipped_files += skipped_files;
+            state.conflicts += conflicts;
+            render_organize_snapshot(&state)
+        };
+        self.bar.set_message(message);
+    }
+
+    pub(crate) fn finish_with_message(&self, message: impl Into<String>) {
+        self.bar.finish_with_message(message.into());
     }
 }
 
@@ -262,6 +318,13 @@ fn render_snapshot_message(snapshot: ProgressSnapshot) -> String {
     }
 
     parts.join(" | ")
+}
+
+fn render_organize_snapshot(snapshot: &OrganizeProgressState) -> String {
+    format!(
+        "已移动文件 {} | 已跳过 {} | 冲突 {} | 未识别 {}",
+        snapshot.moved_files, snapshot.skipped_files, snapshot.conflicts, snapshot.unknown_files
+    )
 }
 
 fn format_duration(seconds: u64) -> String {

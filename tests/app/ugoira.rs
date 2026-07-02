@@ -6,7 +6,9 @@ use std::{
 use gif::ColorOutput;
 use hana_pixiv_downloader::{
     auth::Credential,
-    config::{DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder},
+    config::{
+        BatchLayoutStrategy, DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder,
+    },
     crawler::{
         bookmark::BookmarkCrawler,
         illust::IllustCrawler,
@@ -41,6 +43,7 @@ fn options(directory: PathBuf) -> ResolvedDownloadOptions {
     ResolvedDownloadOptions {
         mode: DownloadMode::Illust,
         directory,
+        batch_layout: BatchLayoutStrategy::Mixed,
         count: defaults.count,
         sort: SortOrder::DateDesc,
         r18: defaults.r18,
@@ -351,14 +354,12 @@ async fn user_crawler_mixed_batch_reuses_detail_for_tags_export() {
     assert!(
         temp.path()
             .join(USER_ID)
-            .join(STATIC_ID)
             .join(format!("{STATIC_ID}_p0.png"))
             .exists()
     );
     assert!(
         temp.path()
             .join(USER_ID)
-            .join(UGOIRA_ID)
             .join(format!("{UGOIRA_ID}.gif"))
             .exists()
     );
@@ -421,14 +422,12 @@ async fn keyword_crawler_supports_mixed_batch_with_ugoira() {
     assert!(
         temp.path()
             .join(KEYWORD)
-            .join(STATIC_ID)
             .join(format!("{STATIC_ID}_p0.png"))
             .exists()
     );
     assert!(
         temp.path()
             .join(KEYWORD)
-            .join(UGOIRA_ID)
             .join(format!("{UGOIRA_ID}.gif"))
             .exists()
     );
@@ -463,14 +462,12 @@ async fn ranking_crawler_supports_mixed_batch_with_ugoira() {
     assert!(
         temp.path()
             .join(RANKING_MODE)
-            .join(STATIC_ID)
             .join(format!("{STATIC_ID}_p0.png"))
             .exists()
     );
     assert!(
         temp.path()
             .join(RANKING_MODE)
-            .join(UGOIRA_ID)
             .join(format!("{UGOIRA_ID}.gif"))
             .exists()
     );
@@ -505,14 +502,12 @@ async fn bookmark_crawler_supports_mixed_batch_with_ugoira() {
     assert!(
         temp.path()
             .join(USER_ID)
-            .join(STATIC_ID)
             .join(format!("{STATIC_ID}_p0.png"))
             .exists()
     );
     assert!(
         temp.path()
             .join(USER_ID)
-            .join(UGOIRA_ID)
             .join(format!("{UGOIRA_ID}.gif"))
             .exists()
     );
@@ -559,5 +554,49 @@ async fn replay_can_recover_convert_failure_record() {
 
     assert_eq!(report.recovered, 1);
     assert_eq!(report.remaining_records.len(), 0);
+    assert_gif_file(&temp.path().join(UGOIRA_ID).join(format!("{UGOIRA_ID}.gif")));
+}
+
+#[tokio::test]
+async fn replay_can_recover_download_stage_ugoira_failure_record() {
+    let server = MockServer::start().await;
+    let temp = tempdir().unwrap();
+    let base_url = server.uri().parse().unwrap();
+    mount_ugoira_artwork(&server, read_binary_fixture("ugoira.zip")).await;
+
+    let options = options(temp.path().to_path_buf());
+    let replay_command = ReplayCommand::Illust {
+        illust_id: UGOIRA_ID.to_string(),
+        options: ReplayOptions::from(&options),
+    };
+    let report = replay_failures_with_session(
+        session(
+            options.clone(),
+            Credential::new("cookie").unwrap(),
+            base_url,
+        ),
+        &replay_command,
+        vec![FailureRecord {
+            mode: DownloadMode::Illust,
+            stage: FailureStage::Download,
+            illust_id: Some(UGOIRA_ID.to_string()),
+            source_url: Some(ugoira_zip_url(&server)),
+            target_path: Some(
+                temp.path()
+                    .join(UGOIRA_ID)
+                    .join(format!("{UGOIRA_ID}.gif"))
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            error_kind: "download".to_string(),
+            error_message: "broken".to_string(),
+            retryable: true,
+        }],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.recovered, 1);
+    assert!(report.remaining_records.is_empty());
     assert_gif_file(&temp.path().join(UGOIRA_ID).join(format!("{UGOIRA_ID}.gif")));
 }

@@ -40,7 +40,7 @@ async fn user_download_dry_run_succeeds_in_black_box_mode() {
         .assert()
         .success();
 
-    assert!(!output_root.join("12345678/123456/123456_p0.png").exists());
+    assert!(!output_root.join("12345678/123456_p0.png").exists());
 }
 
 #[tokio::test]
@@ -112,5 +112,5 @@ async fn user_download_writes_files_in_black_box_mode() {
         .assert()
         .success();
 
-    assert!(output_root.join("12345678/123456/123456_p0.png").exists());
+    assert!(output_root.join("12345678/123456_p0.png").exists());
 }

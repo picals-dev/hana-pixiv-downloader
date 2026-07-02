@@ -7,15 +7,15 @@ use log::warn;
 use serde_json::Value;
 
 use crate::{
-    config::{ResolvedDownloadOptions, SortOrder},
+    config::{BatchLayoutStrategy, ResolvedDownloadOptions, SortOrder},
     downloader::{
         ArtworkDownloadPlan, DownloadResult, Downloader, ImageArtworkPlan, UgoiraDownloadPlan,
-        ugoira::target_path_for_ugoira,
+        image::file_name_from_image_url, ugoira::target_path_for_ugoira,
     },
     error::{AppResult, CrawlerError},
     failure::{FailureRecord, FailureStage},
     net::PixivNetSession,
-    output::OutputLayout,
+    output::{ArtworkInventory, ArtworkInventoryEntry, OutputLayout},
     pixiv::selector::{
         IllustType, select_illust_tags, select_illust_type, select_page_original_urls,
         select_ugoira_metadata,
@@ -45,7 +45,14 @@ pub(crate) async fn plan_artworks_for_illust_ids(
             let options = options.clone();
 
             async move {
-                let outcome = plan_single_artwork(&session, &illust_id, &detail, &layout).await;
+                let outcome = plan_single_artwork(
+                    &session,
+                    &illust_id,
+                    &detail,
+                    &layout,
+                    options.batch_layout,
+                )
+                .await;
                 (illust_id, outcome, options.mode)
             }
         })
@@ -268,12 +275,16 @@ async fn plan_single_artwork(
     illust_id: &str,
     detail: &Value,
     layout: &OutputLayout,
+    batch_layout: BatchLayoutStrategy,
 ) -> AppResult<ArtworkDownloadPlan> {
     match select_illust_type(detail)? {
         IllustType::Image => {
             let pages = session.fetch_illust_pages(illust_id).await?;
             let image_urls = select_page_original_urls(&pages)?;
-            let target_dir = layout.illust_dir(illust_id)?;
+            let inventory = build_image_inventory(illust_id, &image_urls)?;
+            let target_dir = layout
+                .placement_for_inventory(batch_layout, &inventory)?
+                .target_dir;
             Ok(ArtworkDownloadPlan::Images(ImageArtworkPlan {
                 illust_id: illust_id.to_string(),
                 image_urls,
@@ -283,7 +294,10 @@ async fn plan_single_artwork(
         IllustType::Ugoira => {
             let meta = session.fetch_ugoira_meta(illust_id).await?;
             let metadata = select_ugoira_metadata(&meta)?;
-            let target_dir = layout.illust_dir(illust_id)?;
+            let inventory = build_ugoira_inventory(illust_id)?;
+            let target_dir = layout
+                .placement_for_inventory(batch_layout, &inventory)?
+                .target_dir;
             Ok(ArtworkDownloadPlan::Ugoira(UgoiraDownloadPlan {
                 illust_id: illust_id.to_string(),
                 source_url: metadata.original_src.clone(),
@@ -292,4 +306,19 @@ async fn plan_single_artwork(
             }))
         }
     }
+}
+
+fn build_image_inventory(illust_id: &str, image_urls: &[String]) -> AppResult<ArtworkInventory> {
+    let entries = image_urls
+        .iter()
+        .map(|image_url| file_name_from_image_url(image_url).map(ArtworkInventoryEntry::planned))
+        .collect::<Result<Vec<_>, _>>()?;
+    ArtworkInventory::new(illust_id.to_string(), entries)
+}
+
+fn build_ugoira_inventory(illust_id: &str) -> AppResult<ArtworkInventory> {
+    ArtworkInventory::new(
+        illust_id.to_string(),
+        vec![ArtworkInventoryEntry::planned(format!("{illust_id}.gif"))],
+    )
 }

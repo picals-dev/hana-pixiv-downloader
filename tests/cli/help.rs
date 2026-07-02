@@ -8,7 +8,24 @@ fn binary_help_shows_download_subcommand() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("download"));
+        .stdout(predicate::str::contains("download"))
+        .stdout(predicate::str::contains("organize"));
+}
+
+#[test]
+fn organize_help_mentions_dry_run_and_yes() {
+    let output = Command::cargo_bin("hpd")
+        .unwrap()
+        .args(["organize", "--help"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let help = String::from_utf8_lossy(&output);
+
+    assert!(help.contains("--dry-run"));
+    assert!(help.contains("--yes"));
 }
 
 #[test]

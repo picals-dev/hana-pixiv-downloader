@@ -1,14 +1,17 @@
 //! 失败清单回放执行。
 
-use std::{collections::BTreeSet, path::Path, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc};
 
 use crate::{
     auth::Credential,
-    downloader::{ArtworkDownloadPlan, ImageArtworkPlan},
+    config::Config,
+    downloader::{ArtworkDownloadPlan, ImageArtworkPlan, image::file_name_from_image_url},
     error::AppResult,
     failure::{FailureRecord, FailureStage, ReplayCommand},
     net::{PixivNetSession, resolve_base_url, test_hook::attach_session_observer},
     output::resolve_output_layout,
+    output::{ArtworkInventory, ArtworkInventoryEntry},
+    pixiv::selector::select_page_original_urls,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -24,7 +27,10 @@ pub(crate) async fn replay_failures(
     command: &ReplayCommand,
     records: Vec<FailureRecord>,
 ) -> AppResult<ReplayExecutionReport> {
-    let options = command.options().to_resolved(command.mode());
+    let current_config = Config::load()?;
+    let options = command
+        .options()
+        .to_resolved(command.mode(), current_config.download.batch_layout);
     let base_url = resolve_base_url(None)?;
     let builder = attach_session_observer(PixivNetSession::builder(
         options.clone(),
@@ -32,7 +38,7 @@ pub(crate) async fn replay_failures(
         base_url,
     ));
     let session = Arc::new(builder.build()?);
-    replay_failures_with_session(session, command, records).await
+    replay_failures_with_options(session, command, records, options).await
 }
 
 pub async fn replay_failures_with_session(
@@ -40,7 +46,19 @@ pub async fn replay_failures_with_session(
     command: &ReplayCommand,
     records: Vec<FailureRecord>,
 ) -> AppResult<ReplayExecutionReport> {
-    let options = command.options().to_resolved(command.mode());
+    let current_config = Config::load()?;
+    let options = command
+        .options()
+        .to_resolved(command.mode(), current_config.download.batch_layout);
+    replay_failures_with_options(session, command, records, options).await
+}
+
+async fn replay_failures_with_options(
+    session: Arc<PixivNetSession>,
+    command: &ReplayCommand,
+    records: Vec<FailureRecord>,
+    options: crate::config::ResolvedDownloadOptions,
+) -> AppResult<ReplayExecutionReport> {
     let layout = resolve_output_layout(command.mode(), &options.directory, command.subject())?;
 
     let mut report = ReplayExecutionReport::default();
@@ -104,7 +122,7 @@ async fn replay_artwork_record(
     };
 
     if record.stage == FailureStage::Download && is_direct_image_retry_record(&record) {
-        return replay_image_download_record(session, options, record).await;
+        return replay_image_download_record(session, layout, options, record).await;
     }
 
     let planned = crate::crawler::shared::plan_artworks_for_illust_ids(
@@ -134,6 +152,7 @@ async fn replay_artwork_record(
 
 async fn replay_image_download_record(
     session: Arc<PixivNetSession>,
+    layout: &crate::output::OutputLayout,
     options: crate::config::ResolvedDownloadOptions,
     record: FailureRecord,
 ) -> AppResult<Option<Vec<FailureRecord>>> {
@@ -143,17 +162,21 @@ async fn replay_image_download_record(
     let Some(source_url) = record.source_url.clone() else {
         return Ok(None);
     };
-    let Some(target_path) = record.target_path.clone() else {
-        return Ok(None);
-    };
 
-    let target_dir = Path::new(&target_path)
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default();
+    let inventory = match rebuild_retry_inventory(&session, &illust_id).await {
+        Ok(inventory) => inventory,
+        Err(_) if !options.mode.is_batch() => {
+            build_single_source_inventory(&illust_id, &source_url)?
+        }
+        Err(_) => return Ok(None),
+    };
+    let target_dir = layout
+        .placement_for_inventory(options.batch_layout, &inventory)?
+        .target_dir;
+
     let result = crate::crawler::shared::download_artworks(
         options.clone(),
-        options.directory.clone(),
+        layout.context_dir().to_path_buf(),
         session,
         &[ArtworkDownloadPlan::Images(ImageArtworkPlan {
             illust_id,
@@ -166,12 +189,37 @@ async fn replay_image_download_record(
     Ok(Some(result.failure_records))
 }
 
+async fn rebuild_retry_inventory(
+    session: &Arc<PixivNetSession>,
+    illust_id: &str,
+) -> AppResult<ArtworkInventory> {
+    let pages = session.fetch_illust_pages(illust_id).await?;
+    let image_urls = select_page_original_urls(&pages)?;
+    let entries = image_urls
+        .iter()
+        .map(|url| file_name_from_image_url(url).map(ArtworkInventoryEntry::planned))
+        .collect::<Result<Vec<_>, _>>()?;
+    ArtworkInventory::new(illust_id.to_string(), entries)
+}
+
+fn build_single_source_inventory(illust_id: &str, source_url: &str) -> AppResult<ArtworkInventory> {
+    ArtworkInventory::new(
+        illust_id.to_string(),
+        vec![ArtworkInventoryEntry::planned(file_name_from_image_url(
+            source_url,
+        )?)],
+    )
+}
+
 fn is_direct_image_retry_record(record: &FailureRecord) -> bool {
+    let Some(source_url) = record.source_url.as_deref() else {
+        return false;
+    };
     let Some(target_path) = record.target_path.as_deref() else {
         return false;
     };
 
-    !target_path.ends_with(".gif") && record.source_url.is_some()
+    !target_path.ends_with(".gif") && !source_url.ends_with(".zip")
 }
 
 async fn replay_tag_records(

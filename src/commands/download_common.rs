@@ -9,7 +9,8 @@ use crate::{
     auth::Credential,
     cli::download::RankingMode,
     config::{
-        Config, DownloadMode, DownloadOverrides, EnvOverrides, ResolvedDownloadOptions, SortOrder,
+        BatchLayoutStrategy, Config, DownloadMode, DownloadOverrides, EnvOverrides,
+        ResolvedDownloadOptions, SortOrder,
     },
     downloader::DownloadResult,
     error::{AppResult, CrawlerError},
@@ -311,6 +312,18 @@ pub(crate) fn render_order_label(mode: DownloadMode, sort: SortOrder) -> String 
     }
 }
 
+fn render_batch_layout_label(mode: DownloadMode, layout: BatchLayoutStrategy) -> String {
+    if !mode.is_batch() {
+        return format!("{}（当前命令不受此设置影响）", layout.display_name());
+    }
+
+    match layout {
+        BatchLayoutStrategy::PerIllust => "per_illust（每个作品单独目录）".to_string(),
+        BatchLayoutStrategy::Mixed => "mixed（单输出平铺，多输出分目录）".to_string(),
+        BatchLayoutStrategy::Flat => "flat（所有作品直接平铺）".to_string(),
+    }
+}
+
 pub(crate) fn print_download_config_table(
     presentation: &DownloadPresentation,
     options: &ResolvedDownloadOptions,
@@ -335,6 +348,10 @@ pub(crate) fn print_download_config_table(
     table.add_row(vec!["下载目录", &target_directory.display().to_string()]);
     table.add_row(vec!["候选作品数", candidate.as_str()]);
     table.add_row(vec!["本次下载作品数", planned.as_str()]);
+    table.add_row(vec![
+        "批量目录布局",
+        &render_batch_layout_label(options.mode, options.batch_layout),
+    ]);
     table.add_row(vec!["顺序", presentation.order_label.as_str()]);
     table.add_row(vec!["并发下载数", &options.concurrent.to_string()]);
     table.add_row(vec!["单次请求超时", &format!("{} 秒", options.timeout)]);
@@ -465,7 +482,7 @@ mod tests {
 
     use crate::{
         auth::Credential,
-        config::SortOrder,
+        config::{BatchLayoutStrategy, SortOrder},
         failure::{FailureManifest, FailureRecord, FailureStage},
         net::{NetEvent, PixivNetSession},
         test_support::{EnvVarGuard, lock_env},
@@ -510,7 +527,10 @@ mod tests {
         };
         let command = build_replay_command(
             crate::config::DownloadMode::Illust,
-            &options.to_resolved(crate::config::DownloadMode::Illust),
+            &options.to_resolved(
+                crate::config::DownloadMode::Illust,
+                BatchLayoutStrategy::Mixed,
+            ),
             "123456",
             None,
         );
@@ -519,7 +539,10 @@ mod tests {
         let observer_events = Arc::clone(&events);
         let session = Arc::new(
             PixivNetSession::builder(
-                options.to_resolved(crate::config::DownloadMode::Illust),
+                options.to_resolved(
+                    crate::config::DownloadMode::Illust,
+                    BatchLayoutStrategy::Mixed,
+                ),
                 credential.clone(),
                 server.uri().parse().unwrap(),
             )
@@ -612,14 +635,20 @@ mod tests {
         };
         let command = build_replay_command(
             crate::config::DownloadMode::Illust,
-            &options.to_resolved(crate::config::DownloadMode::Illust),
+            &options.to_resolved(
+                crate::config::DownloadMode::Illust,
+                BatchLayoutStrategy::Mixed,
+            ),
             "123456",
             None,
         );
         let credential = Credential::new("cookie").unwrap();
         let session = Arc::new(
             PixivNetSession::new_with_base_url(
-                options.to_resolved(crate::config::DownloadMode::Illust),
+                options.to_resolved(
+                    crate::config::DownloadMode::Illust,
+                    BatchLayoutStrategy::Mixed,
+                ),
                 credential.clone(),
                 "https://www.pixiv.net".parse().unwrap(),
             )

@@ -5,7 +5,7 @@ use serde::Serialize;
 use crate::{
     auth::Credential,
     cli::config::SetConfigArgs,
-    config::{Config, config_dir, parse_sort_value},
+    config::{Config, config_dir, parse_batch_layout_value, parse_sort_value},
     error::{AppResult, CrawlerError},
 };
 
@@ -36,11 +36,23 @@ pub(crate) async fn show() -> AppResult<()> {
 
 pub(crate) async fn set(args: SetConfigArgs) -> AppResult<()> {
     let updated_key = args.key.clone();
-
-    match args.key.as_str() {
-        "auth.phpsessid" => set_auth_phpsessid(&args.value)?,
-        "auth.user_id" => set_auth_user_id(&args.value)?,
+    let note = match args.key.as_str() {
+        "auth.phpsessid" => {
+            set_auth_phpsessid(&args.value)?;
+            ConfigUpdateNote::None
+        }
+        "auth.user_id" => {
+            set_auth_user_id(&args.value)?;
+            ConfigUpdateNote::None
+        }
         _ => set_regular_config(args)?,
+    };
+
+    if note == ConfigUpdateNote::BatchLayoutChanged {
+        println!("提示：该设置只会影响后续批量下载。");
+        println!("如需按新布局整理之前设定下的已有目录，请运行：");
+        println!("  hpd organize --dry-run");
+        println!("  hpd organize --yes");
     }
 
     println!("✅ 已更新配置：{updated_key}");
@@ -68,10 +80,20 @@ fn set_auth_user_id(value: &str) -> AppResult<()> {
     Ok(())
 }
 
-fn set_regular_config(args: SetConfigArgs) -> AppResult<()> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfigUpdateNote {
+    None,
+    BatchLayoutChanged,
+}
+
+fn set_regular_config(args: SetConfigArgs) -> AppResult<ConfigUpdateNote> {
     let mut config = Config::load()?;
+    let previous_batch_layout = config.download.batch_layout;
 
     match args.key.as_str() {
+        "download.batch_layout" => {
+            config.download.batch_layout = parse_batch_layout_value(&args.value)?
+        }
         "download.count" => config.download.count = parse_usize(&args.key, &args.value)?,
         "download.sort" => config.download.sort = parse_sort_value(&args.value)?,
         "download.r18" => config.download.r18 = parse_bool(&args.key, &args.value)?,
@@ -92,7 +114,15 @@ fn set_regular_config(args: SetConfigArgs) -> AppResult<()> {
     }
 
     config.save()?;
-    Ok(())
+    Ok(
+        if args.key == "download.batch_layout"
+            && config.download.batch_layout != previous_batch_layout
+        {
+            ConfigUpdateNote::BatchLayoutChanged
+        } else {
+            ConfigUpdateNote::None
+        },
+    )
 }
 
 fn render_show_output(config: Config, credential: Option<Credential>) -> AppResult<String> {
@@ -200,6 +230,7 @@ mod tests {
         assert!(rendered.contains("phpsessid = \"cookie-value\""));
         assert!(rendered.contains("user_id = \"12345678\""));
         assert!(rendered.contains("[download.roots]"));
+        assert!(rendered.contains("batch_layout = \"mixed\""));
         assert!(rendered.contains("illust = \"/tmp/illust\""));
         assert!(rendered.contains("ranking = \"/tmp/ranking\""));
     }

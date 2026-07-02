@@ -31,6 +31,31 @@ pub enum DownloadMode {
     Ranking,
 }
 
+impl DownloadMode {
+    pub(crate) fn is_batch(self) -> bool {
+        !matches!(self, Self::Illust)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchLayoutStrategy {
+    PerIllust,
+    #[default]
+    Mixed,
+    Flat,
+}
+
+impl BatchLayoutStrategy {
+    pub(crate) fn display_name(self) -> &'static str {
+        match self {
+            Self::PerIllust => "per_illust",
+            Self::Mixed => "mixed",
+            Self::Flat => "flat",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct DownloadRootsConfig {
     pub illust: String,
@@ -72,6 +97,7 @@ impl DownloadRootsConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DownloadConfig {
     pub(crate) roots: DownloadRootsConfig,
+    pub batch_layout: BatchLayoutStrategy,
     pub count: usize,
     pub sort: SortOrder,
     pub r18: bool,
@@ -86,6 +112,7 @@ impl Default for DownloadConfig {
     fn default() -> Self {
         Self {
             roots: DownloadRootsConfig::default(),
+            batch_layout: BatchLayoutStrategy::Mixed,
             count: 0,
             sort: SortOrder::DateDesc,
             r18: false,
@@ -142,6 +169,7 @@ pub(crate) struct EnvOverrides {
 pub struct ResolvedDownloadOptions {
     pub mode: DownloadMode,
     pub directory: PathBuf,
+    pub batch_layout: BatchLayoutStrategy,
     pub count: usize,
     pub sort: SortOrder,
     pub r18: bool,
@@ -168,6 +196,8 @@ struct RawDownloadConfig {
     directory: Option<String>,
     #[serde(default)]
     roots: Option<RawDownloadRootsConfig>,
+    #[serde(default)]
+    batch_layout: Option<BatchLayoutStrategy>,
     #[serde(default)]
     count: Option<usize>,
     #[serde(default)]
@@ -284,6 +314,7 @@ impl Config {
         let resolved = ResolvedDownloadOptions {
             mode,
             directory: expand_home_dir(&directory)?,
+            batch_layout: self.download.batch_layout,
             count: cli.count.or(env.count).unwrap_or(self.download.count),
             sort: cli.sort.or(env.sort).unwrap_or(self.download.sort),
             r18: cli.r18.or(env.r18).unwrap_or(self.download.r18),
@@ -325,6 +356,7 @@ impl Config {
         Ok(Self {
             download: DownloadConfig {
                 roots,
+                batch_layout: raw.download.batch_layout.unwrap_or(defaults.batch_layout),
                 count: raw.download.count.unwrap_or(defaults.count),
                 sort: raw.download.sort.unwrap_or(defaults.sort),
                 r18: raw.download.r18.unwrap_or(defaults.r18),
@@ -439,6 +471,22 @@ pub(crate) fn invalid_sort_value_error(value: &str) -> CrawlerError {
     ))
 }
 
+pub(crate) fn parse_batch_layout_value(value: &str) -> AppResult<BatchLayoutStrategy> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "per_illust" => Ok(BatchLayoutStrategy::PerIllust),
+        "mixed" => Ok(BatchLayoutStrategy::Mixed),
+        "flat" => Ok(BatchLayoutStrategy::Flat),
+        _ => Err(invalid_batch_layout_value_error(value).into()),
+    }
+}
+
+pub(crate) fn invalid_batch_layout_value_error(value: &str) -> CrawlerError {
+    CrawlerError::InvalidInput(format!(
+        "无效的批量目录布局: {}，可选值为 per_illust/mixed/flat",
+        value
+    ))
+}
+
 fn validate_non_empty_path(key: &str, value: &str) -> AppResult<()> {
     if value.trim().is_empty() {
         return Err(CrawlerError::InvalidInput(format!("{key} 不能为空")).into());
@@ -496,8 +544,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        Config, DownloadMode, DownloadOverrides, DownloadRootsConfig, EnvOverrides, SortOrder,
-        build_default_download_root, default_download_root_seed, join_root_seed,
+        BatchLayoutStrategy, Config, DownloadConfig, DownloadMode, DownloadOverrides,
+        DownloadRootsConfig, EnvOverrides, SortOrder, build_default_download_root,
+        default_download_root_seed, join_root_seed, parse_batch_layout_value,
     };
 
     #[test]
@@ -535,6 +584,7 @@ mod tests {
 
         assert_eq!(resolved.mode, DownloadMode::User);
         assert_eq!(resolved.directory, PathBuf::from("/cli"));
+        assert_eq!(resolved.batch_layout, BatchLayoutStrategy::Mixed);
         assert_eq!(resolved.count, 24);
         assert_eq!(resolved.sort, SortOrder::DateAsc);
         assert!(!resolved.r18);
@@ -564,6 +614,7 @@ mod tests {
 
         assert_eq!(resolved.count, 99);
         assert_eq!(resolved.sort, SortOrder::DateDesc);
+        assert_eq!(resolved.batch_layout, BatchLayoutStrategy::Mixed);
         assert_eq!(
             resolved.directory,
             super::expand_home_dir(Path::new(&join_root_seed(&default_root, "keyword"))).unwrap()
@@ -632,7 +683,55 @@ keyword = "~/CustomKeyword"
         let saved = std::fs::read_to_string(path).unwrap();
 
         assert!(saved.contains("[download.roots]"));
+        assert!(saved.contains("batch_layout = \"mixed\""));
         assert!(!saved.contains("directory = "));
+    }
+
+    #[test]
+    fn batch_layout_defaults_to_mixed() {
+        assert_eq!(
+            DownloadConfig::default().batch_layout,
+            BatchLayoutStrategy::Mixed
+        );
+    }
+
+    #[test]
+    fn missing_batch_layout_field_uses_mixed_default() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"[download]
+count = 5
+
+[download.roots]
+illust = "/tmp/illust"
+user = "/tmp/user"
+bookmark = "/tmp/bookmark"
+keyword = "/tmp/keyword"
+ranking = "/tmp/ranking"
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_from(&path).unwrap();
+        assert_eq!(config.download.batch_layout, BatchLayoutStrategy::Mixed);
+    }
+
+    #[test]
+    fn batch_layout_round_trip_values_are_stable() {
+        assert_eq!(
+            parse_batch_layout_value("per_illust").unwrap(),
+            BatchLayoutStrategy::PerIllust
+        );
+        assert_eq!(
+            parse_batch_layout_value("mixed").unwrap(),
+            BatchLayoutStrategy::Mixed
+        );
+        assert_eq!(
+            parse_batch_layout_value("flat").unwrap(),
+            BatchLayoutStrategy::Flat
+        );
     }
 
     #[test]

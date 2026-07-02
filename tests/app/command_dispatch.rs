@@ -8,9 +8,10 @@ use hana_pixiv_downloader::{
     auth::Credential,
     cli::Cli,
     commands,
-    config::{Config, SortOrder},
+    config::{BatchLayoutStrategy, Config, DownloadMode, ResolvedDownloadOptions, SortOrder},
     failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
     net::NetEvent,
+    replay::replay_failures_with_session,
 };
 use tempfile::tempdir;
 use wiremock::{
@@ -40,6 +41,24 @@ async fn mount_illust_detail(server: &MockServer, illust_id: &str) {
         })))
         .mount(server)
         .await;
+}
+
+fn replay_session_options(directory: std::path::PathBuf) -> ResolvedDownloadOptions {
+    ResolvedDownloadOptions {
+        mode: DownloadMode::User,
+        directory,
+        batch_layout: BatchLayoutStrategy::Mixed,
+        count: 1,
+        sort: SortOrder::DateDesc,
+        r18: false,
+        ai: true,
+        concurrent: 1,
+        timeout: 30,
+        retry: 2,
+        with_tags: false,
+        proxy_url: None,
+        dry_run: false,
+    }
 }
 
 fn observed_session_ids(events: &[NetEvent]) -> BTreeSet<u64> {
@@ -265,6 +284,168 @@ async fn retry_command_can_recover_retryable_download_record() {
 }
 
 #[tokio::test]
+async fn replay_mixed_multi_page_image_retry_stays_in_illust_directory() {
+    let _lock = lock_env().await;
+    let temp = tempdir().unwrap();
+    let _config_home = set_config_home(temp.path());
+    let _download_env = unset_download_env();
+    let server = MockServer::start().await;
+
+    let mut config = Config::default();
+    config.download.batch_layout = BatchLayoutStrategy::Mixed;
+    config.save().unwrap();
+
+    let user_root = temp.path().join("user-root");
+    let context_dir = user_root.join("12345678");
+    let target_path = context_dir.join("123456_p0.png");
+    let expected_path = context_dir.join("123456/123456_p0.png");
+
+    Mock::given(method("GET"))
+        .and(path("/ajax/illust/123456/pages"))
+        .and(header(
+            "referer",
+            format!("{}/artworks/123456", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "error": false,
+            "body": [
+                { "urls": { "original": format!("{}/img-original/123456_p0.png", server.uri()) } },
+                { "urls": { "original": format!("{}/img-original/123456_p1.png", server.uri()) } }
+            ]
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/img-original/123456_p0.png"))
+        .and(header(
+            "referer",
+            format!("{}/artworks/123456", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ok".to_vec()))
+        .mount(&server)
+        .await;
+
+    let command = ReplayCommand::User {
+        user_id: "12345678".to_string(),
+        options: ReplayOptions {
+            directory: user_root.to_string_lossy().into_owned(),
+            count: 1,
+            sort: SortOrder::DateDesc,
+            r18: false,
+            ai: true,
+            concurrent: 1,
+            timeout: 30,
+            retry: 2,
+            with_tags: false,
+            proxy_url: None,
+            dry_run: false,
+        },
+    };
+    let report = replay_failures_with_session(
+        Arc::new(
+            hana_pixiv_downloader::net::PixivNetSession::new_with_base_url(
+                replay_session_options(user_root.clone()),
+                Credential::new("cookie").unwrap(),
+                server.uri().parse().unwrap(),
+            )
+            .unwrap(),
+        ),
+        &command,
+        vec![FailureRecord {
+            mode: DownloadMode::User,
+            stage: FailureStage::Download,
+            illust_id: Some("123456".to_string()),
+            source_url: Some(format!("{}/img-original/123456_p0.png", server.uri())),
+            target_path: Some(target_path.to_string_lossy().into_owned()),
+            error_kind: "timeout".to_string(),
+            error_message: "timeout".to_string(),
+            retryable: true,
+        }],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.recovered, 1);
+    assert!(report.remaining_records.is_empty());
+    assert!(expected_path.exists());
+    assert!(!target_path.exists());
+}
+
+#[tokio::test]
+async fn replay_mixed_image_retry_keeps_failure_when_pages_cannot_be_rebuilt() {
+    let _lock = lock_env().await;
+    let temp = tempdir().unwrap();
+    let _config_home = set_config_home(temp.path());
+    let _download_env = unset_download_env();
+    let server = MockServer::start().await;
+
+    let mut config = Config::default();
+    config.download.batch_layout = BatchLayoutStrategy::Mixed;
+    config.save().unwrap();
+
+    let user_root = temp.path().join("user-root");
+    let context_dir = user_root.join("12345678");
+    let old_target = context_dir.join("123456_p0.png");
+    let expected_target = context_dir.join("123456/123456_p0.png");
+
+    Mock::given(method("GET"))
+        .and(path("/ajax/illust/123456/pages"))
+        .and(header(
+            "referer",
+            format!("{}/artworks/123456", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+
+    let command = ReplayCommand::User {
+        user_id: "12345678".to_string(),
+        options: ReplayOptions {
+            directory: user_root.to_string_lossy().into_owned(),
+            count: 1,
+            sort: SortOrder::DateDesc,
+            r18: false,
+            ai: true,
+            concurrent: 1,
+            timeout: 30,
+            retry: 2,
+            with_tags: false,
+            proxy_url: None,
+            dry_run: false,
+        },
+    };
+    let report = replay_failures_with_session(
+        Arc::new(
+            hana_pixiv_downloader::net::PixivNetSession::new_with_base_url(
+                replay_session_options(user_root.clone()),
+                Credential::new("cookie").unwrap(),
+                server.uri().parse().unwrap(),
+            )
+            .unwrap(),
+        ),
+        &command,
+        vec![FailureRecord {
+            mode: DownloadMode::User,
+            stage: FailureStage::Download,
+            illust_id: Some("123456".to_string()),
+            source_url: Some(format!("{}/img-original/123456_p0.png", server.uri())),
+            target_path: Some(old_target.to_string_lossy().into_owned()),
+            error_kind: "timeout".to_string(),
+            error_message: "timeout".to_string(),
+            retryable: true,
+        }],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.recovered, 0);
+    assert_eq!(report.remaining_records.len(), 1);
+    assert!(!old_target.exists());
+    assert!(!expected_target.exists());
+}
+
+#[tokio::test]
 async fn auto_replay_reuses_same_session_instance_for_single_download_command() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
@@ -342,7 +523,7 @@ async fn auto_replay_reuses_same_session_instance_for_single_download_command() 
     assert_eq!(session_ids.len(), 1);
     assert!(
         temp.path()
-            .join("user-root/12345678/123456/123456_p0.png")
+            .join("user-root/12345678/123456_p0.png")
             .exists()
     );
 }

@@ -20,7 +20,7 @@ pub enum ConfigAction {
 pub struct SetConfigArgs {
     #[arg(
         value_name = "KEY",
-        help = "配置键，例如 auth.phpsessid 或 download.roots.user"
+        help = "配置键，例如 auth.phpsessid、download.batch_layout 或 download.roots.user"
     )]
     pub key: String,
 

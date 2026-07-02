@@ -9,11 +9,12 @@ use url::Url;
 use crate::{
     auth::Credential,
     config::{
-        Config, DownloadMode, DownloadOverrides, DownloadRootsConfig, EnvOverrides,
-        ResolvedDownloadOptions, SortOrder,
+        BatchLayoutStrategy, Config, DownloadMode, DownloadOverrides, DownloadRootsConfig,
+        EnvOverrides, ResolvedDownloadOptions, SortOrder,
     },
     error::AppResult,
     net::PixivNetSession,
+    organize::OrganizeExecutionReport,
     pixiv::selector::select_current_user_id,
 };
 
@@ -21,6 +22,7 @@ pub(crate) async fn run() -> AppResult<()> {
     print_setup_intro();
 
     let mut config = Config::load()?;
+    let previous_config = config.clone();
     let phpsessid = prompt_phpsessid()?;
     let auto_user_id = fetch_current_user_id_from_pixiv(&Credential::new(&phpsessid)?)
         .await
@@ -34,6 +36,7 @@ pub(crate) async fn run() -> AppResult<()> {
     let user_id = prompt_user_id(auto_user_id.as_deref())?;
 
     config.download.roots = prompt_download_roots(&config.download.roots)?;
+    config.download.batch_layout = prompt_batch_layout(config.download.batch_layout)?;
     config.download.count = prompt_usize(
         "默认下载数量",
         "0 表示下载当前模式可获取的全部内容",
@@ -89,6 +92,7 @@ pub(crate) async fn run() -> AppResult<()> {
     let credential = Credential::new_with_user_id(phpsessid, Some(user_id))?;
     credential.save()?;
     config.save()?;
+    maybe_run_post_setup_organize(&previous_config, &config)?;
 
     println!();
     println!("✅ 配置完成！你现在可以通过以下命令继续查看或修改：");
@@ -101,6 +105,41 @@ pub(crate) async fn run() -> AppResult<()> {
     println!("查看完整帮助: hpd --help");
 
     Ok(())
+}
+
+fn maybe_run_post_setup_organize(previous: &Config, current: &Config) -> AppResult<()> {
+    match evaluate_layout_change(previous, current) {
+        LayoutChangeAction::None => Ok(()),
+        LayoutChangeAction::OfferOrganizeNow => {
+            println!();
+            let confirmed =
+                Confirm::new("批量目录布局已变化，是否立即整理当前 batch roots 下的已有目录？")
+                    .with_default(false)
+                    .prompt()
+                    .map_err(map_inquire_error)?;
+            if !confirmed {
+                println!("你可以稍后手动运行 `hpd organize --dry-run` 或 `hpd organize --yes`。");
+                return Ok(());
+            }
+
+            match crate::commands::organize::run_with_config(current, false, true) {
+                Ok(report) => print_post_organize_result(&report),
+                Err(error) => {
+                    println!("立即整理失败：{error}");
+                    println!("配置已经写入，你可以稍后运行 `hpd organize --yes` 继续整理。");
+                }
+            }
+            Ok(())
+        }
+        LayoutChangeAction::ExplainCrossRootOnly => {
+            println!();
+            println!("本次修改了 batch roots。");
+            println!("当前版本的 hpd organize 只支持当前 root 内原地整理，不负责跨 root 迁移。");
+            println!("如需整理，请先确认最终 roots 后，再运行：");
+            println!("  hpd organize --dry-run");
+            Ok(())
+        }
+    }
 }
 
 fn print_setup_intro() {
@@ -173,25 +212,46 @@ fn prompt_download_roots(current: &DownloadRootsConfig) -> AppResult<DownloadRoo
         )?,
         user: prompt_text(
             "画师下载根目录（user）",
-            "用于 download user 的根目录；最终会继续追加 userId/作品目录",
+            "用于 download user 的根目录；最终会追加 userId，再按 batch_layout 决定作品是否建目录",
             &defaults.user,
         )?,
         bookmark: prompt_text(
             "收藏下载根目录（bookmark）",
-            "用于 download bookmark 的根目录；最终会继续追加 userId/作品目录",
+            "用于 download bookmark 的根目录；最终会追加 userId，再按 batch_layout 决定作品是否建目录",
             &defaults.bookmark,
         )?,
         keyword: prompt_text(
             "关键词下载根目录（keyword）",
-            "用于 download keyword 的根目录；最终会继续追加关键词目录/作品目录",
+            "用于 download keyword 的根目录；最终会追加关键词目录，再按 batch_layout 决定作品是否建目录",
             &defaults.keyword,
         )?,
         ranking: prompt_text(
             "排行榜下载根目录（ranking）",
-            "用于 download ranking 的根目录；最终会继续追加 mode/作品目录",
+            "用于 download ranking 的根目录；最终会追加 mode，再按 batch_layout 决定作品是否建目录",
             &defaults.ranking,
         )?,
     })
+}
+
+fn prompt_batch_layout(default: BatchLayoutStrategy) -> AppResult<BatchLayoutStrategy> {
+    let options = vec![
+        BatchLayoutChoice::Mixed,
+        BatchLayoutChoice::PerIllust,
+        BatchLayoutChoice::Flat,
+    ];
+    let cursor = match default {
+        BatchLayoutStrategy::Mixed => 0,
+        BatchLayoutStrategy::PerIllust => 1,
+        BatchLayoutStrategy::Flat => 2,
+    };
+
+    let selected = Select::new("批量下载目录布局", options)
+        .with_help_message("只影响多作品下载；mixed 会在单输出作品时直接平铺")
+        .with_starting_cursor(cursor)
+        .prompt()
+        .map_err(map_inquire_error)?;
+
+    Ok(BatchLayoutStrategy::from(selected))
 }
 
 fn infer_download_root_seed(current: &DownloadRootsConfig) -> Option<String> {
@@ -334,6 +394,10 @@ fn print_setup_summary(phpsessid: &str, user_id: &str, config: &Config) {
         "  download.roots.ranking = {}",
         config.download.roots.ranking
     );
+    println!(
+        "  download.batch_layout = {}",
+        config.download.batch_layout.display_name()
+    );
     println!("  download.count = {}", config.download.count);
     println!("  download.sort = {}", render_sort(config.download.sort));
     println!("  download.r18 = {}", config.download.r18);
@@ -358,6 +422,39 @@ fn render_optional(value: &str) -> &str {
     } else {
         value
     }
+}
+
+fn print_post_organize_result(report: &OrganizeExecutionReport) {
+    println!(
+        "已完成当前 batch roots 原地整理：移动 {}，跳过 {}，冲突 {}，未识别 {}。",
+        report.moved_files, report.skipped_files, report.conflicts, report.unknown_files
+    );
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LayoutChangeAction {
+    None,
+    OfferOrganizeNow,
+    ExplainCrossRootOnly,
+}
+
+fn evaluate_layout_change(previous: &Config, current: &Config) -> LayoutChangeAction {
+    if !batch_roots_unchanged(previous, current) {
+        return LayoutChangeAction::ExplainCrossRootOnly;
+    }
+
+    if previous.download.batch_layout == current.download.batch_layout {
+        return LayoutChangeAction::None;
+    }
+
+    LayoutChangeAction::OfferOrganizeNow
+}
+
+fn batch_roots_unchanged(previous: &Config, current: &Config) -> bool {
+    previous.download.roots.user == current.download.roots.user
+        && previous.download.roots.bookmark == current.download.roots.bookmark
+        && previous.download.roots.keyword == current.download.roots.keyword
+        && previous.download.roots.ranking == current.download.roots.ranking
 }
 
 async fn fetch_current_user_id_from_pixiv(credential: &Credential) -> AppResult<String> {
@@ -453,6 +550,33 @@ impl fmt::Display for SortChoice {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BatchLayoutChoice {
+    Mixed,
+    PerIllust,
+    Flat,
+}
+
+impl From<BatchLayoutChoice> for BatchLayoutStrategy {
+    fn from(value: BatchLayoutChoice) -> Self {
+        match value {
+            BatchLayoutChoice::Mixed => BatchLayoutStrategy::Mixed,
+            BatchLayoutChoice::PerIllust => BatchLayoutStrategy::PerIllust,
+            BatchLayoutChoice::Flat => BatchLayoutStrategy::Flat,
+        }
+    }
+}
+
+impl fmt::Display for BatchLayoutChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Mixed => write!(f, "mixed（单输出平铺，多输出作品分目录）"),
+            Self::PerIllust => write!(f, "per_illust（所有作品都分目录）"),
+            Self::Flat => write!(f, "flat（所有作品都直接平铺）"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -467,12 +591,15 @@ mod tests {
 
     use crate::{
         auth::Credential,
-        config::{DownloadConfig, DownloadMode, SortOrder},
+        config::{
+            BatchLayoutStrategy, Config, DownloadConfig, DownloadMode, DownloadRootsConfig,
+            SortOrder,
+        },
     };
 
     use super::{
-        derive_setup_download_roots, fetch_current_user_id_with_base_url, infer_download_root_seed,
-        prompt_user_id, render_sort,
+        LayoutChangeAction, derive_setup_download_roots, evaluate_layout_change,
+        fetch_current_user_id_with_base_url, infer_download_root_seed, prompt_user_id, render_sort,
     };
 
     fn options(directory: PathBuf) -> super::ResolvedDownloadOptions {
@@ -480,6 +607,7 @@ mod tests {
         super::ResolvedDownloadOptions {
             mode: DownloadMode::Illust,
             directory,
+            batch_layout: BatchLayoutStrategy::Mixed,
             count: defaults.count,
             sort: SortOrder::DateDesc,
             r18: defaults.r18,
@@ -633,5 +761,54 @@ mod tests {
         let derived = derive_setup_download_roots(&current, "   ");
 
         assert_eq!(derived, current);
+    }
+
+    #[test]
+    fn setup_layout_matrix_offers_organize_when_only_layout_changes() {
+        let previous = Config::default();
+        let mut current = previous.clone();
+        current.download.batch_layout = BatchLayoutStrategy::Flat;
+
+        assert_eq!(
+            evaluate_layout_change(&previous, &current),
+            LayoutChangeAction::OfferOrganizeNow
+        );
+    }
+
+    #[test]
+    fn setup_layout_matrix_explains_cross_root_when_batch_roots_change_only() {
+        let previous = Config::default();
+        let mut current = previous.clone();
+        current.download.roots = DownloadRootsConfig {
+            illust: previous.download.roots.illust.clone(),
+            user: "/tmp/other-user-root".to_string(),
+            bookmark: previous.download.roots.bookmark.clone(),
+            keyword: previous.download.roots.keyword.clone(),
+            ranking: previous.download.roots.ranking.clone(),
+        };
+
+        assert_eq!(
+            evaluate_layout_change(&previous, &current),
+            LayoutChangeAction::ExplainCrossRootOnly
+        );
+    }
+
+    #[test]
+    fn setup_layout_matrix_ignores_illust_root_for_batch_organize_prompt() {
+        let previous = Config::default();
+        let mut current = previous.clone();
+        current.download.batch_layout = BatchLayoutStrategy::PerIllust;
+        current.download.roots = DownloadRootsConfig {
+            illust: "/tmp/other-illust-root".to_string(),
+            user: previous.download.roots.user.clone(),
+            bookmark: previous.download.roots.bookmark.clone(),
+            keyword: previous.download.roots.keyword.clone(),
+            ranking: previous.download.roots.ranking.clone(),
+        };
+
+        assert_eq!(
+            evaluate_layout_change(&previous, &current),
+            LayoutChangeAction::OfferOrganizeNow
+        );
     }
 }

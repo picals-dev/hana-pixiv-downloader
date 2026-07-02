@@ -2,7 +2,9 @@ use std::{fs, path::PathBuf, sync::Arc};
 
 use hana_pixiv_downloader::{
     auth::Credential,
-    config::{DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder},
+    config::{
+        BatchLayoutStrategy, DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder,
+    },
     crawler::{
         bookmark::BookmarkCrawler,
         illust::IllustCrawler,
@@ -27,6 +29,7 @@ fn options(directory: PathBuf) -> ResolvedDownloadOptions {
     ResolvedDownloadOptions {
         mode: DownloadMode::Illust,
         directory,
+        batch_layout: BatchLayoutStrategy::Mixed,
         count: defaults.count,
         sort: SortOrder::DateDesc,
         r18: defaults.r18,
@@ -306,6 +309,7 @@ async fn user_crawler_exports_tags_json_when_enabled() {
 
     let tags_path = temp.path().join("12345678/tags.json");
     assert!(tags_path.exists());
+    assert!(temp.path().join("12345678/123456_p0.png").exists());
     let tags: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(tags_path).unwrap()).unwrap();
     assert_eq!(
@@ -319,7 +323,7 @@ async fn user_crawler_skips_existing_file() {
     let server = MockServer::start().await;
     let temp = tempdir().unwrap();
     let base_url = server.uri().parse().unwrap();
-    let output_dir = temp.path().join("12345678/123456");
+    let output_dir = temp.path().join("12345678");
     fs::create_dir_all(&output_dir).unwrap();
     fs::write(output_dir.join("123456_p0.png"), b"existing").unwrap();
 
@@ -476,6 +480,8 @@ async fn keyword_crawler_can_download_search_results() {
 
     let result = crawler.run().await.unwrap();
     assert_eq!(result.downloaded, 2);
+    assert!(temp.path().join("初音ミク/146185119_p0.png").exists());
+    assert!(temp.path().join("初音ミク/146185709_p0.png").exists());
 }
 
 #[tokio::test]
@@ -528,6 +534,8 @@ async fn ranking_crawler_can_download_ranked_results() {
 
     let result = crawler.run().await.unwrap();
     assert_eq!(result.downloaded, 2);
+    assert!(temp.path().join("daily/146109718_p0.png").exists());
+    assert!(temp.path().join("daily/146135045_p0.png").exists());
 }
 
 #[tokio::test]
@@ -583,16 +591,8 @@ async fn bookmark_crawler_can_download_bookmarks() {
 
     let result = crawler.run().await.unwrap();
     assert_eq!(result.downloaded, 2);
-    assert!(
-        temp.path()
-            .join("12345678/146185119/146185119_p0.png")
-            .exists()
-    );
-    assert!(
-        temp.path()
-            .join("12345678/146185709/146185709_p0.png")
-            .exists()
-    );
+    assert!(temp.path().join("12345678/146185119_p0.png").exists());
+    assert!(temp.path().join("12345678/146185709_p0.png").exists());
 }
 
 #[tokio::test]
@@ -644,17 +644,8 @@ async fn bookmark_crawler_truncates_to_requested_count() {
     let result = crawler.run().await.unwrap();
     assert_eq!(result.total, 1);
     assert_eq!(result.downloaded, 1);
-    assert!(
-        temp.path()
-            .join("12345678/146185709/146185709_p0.png")
-            .exists()
-    );
-    assert!(
-        !temp
-            .path()
-            .join("12345678/146185119/146185119_p0.png")
-            .exists()
-    );
+    assert!(temp.path().join("12345678/146185709_p0.png").exists());
+    assert!(!temp.path().join("12345678/146185119_p0.png").exists());
 }
 
 #[tokio::test]

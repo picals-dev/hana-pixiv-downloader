@@ -8,6 +8,7 @@ mod download_illust;
 mod download_keyword;
 mod download_ranking;
 mod download_user;
+mod organize;
 mod retry_cmd;
 mod setup;
 
@@ -32,5 +33,6 @@ pub async fn dispatch(cli: Cli) -> AppResult<()> {
             ConfigAction::Show => config_cmd::show().await,
             ConfigAction::Set(args) => config_cmd::set(args).await,
         },
+        Command::Organize(args) => organize::run(args).await,
     }
 }

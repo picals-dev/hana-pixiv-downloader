@@ -204,14 +204,12 @@ async fn user_download_handles_mixed_static_and_ugoira_outputs() {
     assert!(
         output_root
             .join(USER_ID)
-            .join(STATIC_ID)
             .join(format!("{STATIC_ID}_p0.png"))
             .exists()
     );
     assert!(
         output_root
             .join(USER_ID)
-            .join(UGOIRA_ID)
             .join(format!("{UGOIRA_ID}.gif"))
             .exists()
     );

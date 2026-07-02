@@ -14,6 +14,7 @@ pub mod downloader;
 pub mod error;
 pub mod failure;
 pub mod net;
+pub(crate) mod organize;
 pub(crate) mod output;
 pub mod pixiv;
 pub mod replay;

@@ -646,6 +646,7 @@ mod tests {
         ResolvedDownloadOptions {
             mode: DownloadMode::Illust,
             directory: "/tmp/hpd".into(),
+            batch_layout: defaults.batch_layout,
             count: defaults.count,
             sort: SortOrder::DateDesc,
             r18: defaults.r18,

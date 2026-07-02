@@ -2,10 +2,11 @@
 
 pub mod config;
 pub mod download;
+pub mod organize;
 
 use clap::{Args, Parser, Subcommand};
 
-use self::{config::ConfigCommand, download::DownloadCommand};
+use self::{config::ConfigCommand, download::DownloadCommand, organize::OrganizeCommand};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -38,6 +39,8 @@ pub enum Command {
     Retry(RetryCommand),
     /// 查看或修改配置
     Config(ConfigCommand),
+    /// 按当前批量布局整理已有下载目录
+    Organize(OrganizeCommand),
 }
 
 #[derive(Debug, Clone, Args)]

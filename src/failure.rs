@@ -10,7 +10,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::{DownloadMode, ResolvedDownloadOptions, ensure_config_dir},
+    config::{BatchLayoutStrategy, DownloadMode, ResolvedDownloadOptions, ensure_config_dir},
     error::{AppResult, CrawlerError},
     net::is_retryable_http_status,
 };
@@ -155,10 +155,15 @@ impl From<&ResolvedDownloadOptions> for ReplayOptions {
 }
 
 impl ReplayOptions {
-    pub(crate) fn to_resolved(&self, mode: DownloadMode) -> ResolvedDownloadOptions {
+    pub(crate) fn to_resolved(
+        &self,
+        mode: DownloadMode,
+        batch_layout: BatchLayoutStrategy,
+    ) -> ResolvedDownloadOptions {
         ResolvedDownloadOptions {
             mode,
             directory: PathBuf::from(&self.directory),
+            batch_layout,
             count: self.count,
             sort: self.sort,
             r18: self.r18,
@@ -431,7 +436,7 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::{
-        config::{DownloadMode, ResolvedDownloadOptions, SortOrder},
+        config::{BatchLayoutStrategy, DownloadMode, ResolvedDownloadOptions, SortOrder},
         error::CrawlerError,
         test_support::{EnvVarGuard, lock_env},
     };
@@ -444,6 +449,7 @@ mod tests {
         ResolvedDownloadOptions {
             mode: DownloadMode::Illust,
             directory: "/tmp/hpd".into(),
+            batch_layout: BatchLayoutStrategy::Mixed,
             count: 1,
             sort: SortOrder::DateDesc,
             r18: false,
@@ -462,7 +468,10 @@ mod tests {
         let resolved = options();
         let replay = ReplayOptions::from(&resolved);
 
-        assert_eq!(replay.to_resolved(DownloadMode::Illust), resolved);
+        assert_eq!(
+            replay.to_resolved(DownloadMode::Illust, BatchLayoutStrategy::Mixed),
+            resolved
+        );
     }
 
     #[tokio::test]

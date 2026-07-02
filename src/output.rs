@@ -1,9 +1,12 @@
 //! 下载输出路径解析。
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+};
 
 use crate::{
-    config::DownloadMode,
+    config::{BatchLayoutStrategy, DownloadMode},
     error::{AppResult, CrawlerError},
 };
 
@@ -16,20 +19,104 @@ pub(crate) struct OutputLayout {
     context_dir: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArtworkInventoryEntry {
+    pub file_name: String,
+    pub source_path: Option<PathBuf>,
+}
+
+impl ArtworkInventoryEntry {
+    pub(crate) fn planned(file_name: impl Into<String>) -> Self {
+        Self {
+            file_name: file_name.into(),
+            source_path: None,
+        }
+    }
+
+    pub(crate) fn existing(file_name: impl Into<String>, source_path: PathBuf) -> Self {
+        Self {
+            file_name: file_name.into(),
+            source_path: Some(source_path),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArtworkInventory {
+    pub illust_id: String,
+    pub output_count: usize,
+    pub entries: Vec<ArtworkInventoryEntry>,
+}
+
+impl ArtworkInventory {
+    pub(crate) fn new(
+        illust_id: impl Into<String>,
+        entries: Vec<ArtworkInventoryEntry>,
+    ) -> AppResult<Self> {
+        let illust_id = validate_controlled_segment("illustId", &illust_id.into())?.to_string();
+        let output_count = entries
+            .iter()
+            .map(|entry| entry.file_name.clone())
+            .collect::<BTreeSet<_>>()
+            .len();
+
+        Ok(Self {
+            illust_id,
+            output_count,
+            entries,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArtworkPlacement {
+    pub illust_id: String,
+    pub output_count: usize,
+    pub context_dir: PathBuf,
+    pub target_dir: PathBuf,
+    pub batch_layout: BatchLayoutStrategy,
+}
+
+impl ArtworkPlacement {
+    pub(crate) fn target_path(&self, file_name: &str) -> PathBuf {
+        self.target_dir.join(file_name)
+    }
+}
+
 impl OutputLayout {
     pub(crate) fn context_dir(&self) -> &Path {
         &self.context_dir
     }
 
-    pub(crate) fn illust_dir(&self, illust_id: &str) -> AppResult<PathBuf> {
-        let illust_id = validate_controlled_segment("illustId", illust_id)?;
+    pub(crate) fn from_context_dir(mode: DownloadMode, context_dir: PathBuf) -> Self {
+        Self { mode, context_dir }
+    }
 
-        Ok(match self.mode {
-            DownloadMode::Illust => self.context_dir.clone(),
-            DownloadMode::User
-            | DownloadMode::Bookmark
-            | DownloadMode::Keyword
-            | DownloadMode::Ranking => self.context_dir.join(illust_id),
+    pub(crate) fn placement_for_inventory(
+        &self,
+        batch_layout: BatchLayoutStrategy,
+        inventory: &ArtworkInventory,
+    ) -> AppResult<ArtworkPlacement> {
+        let illust_id = validate_controlled_segment("illustId", &inventory.illust_id)?.to_string();
+        let target_dir = if !self.mode.is_batch() {
+            self.context_dir.clone()
+        } else {
+            match batch_layout {
+                BatchLayoutStrategy::PerIllust => self.context_dir.join(&illust_id),
+                BatchLayoutStrategy::Mixed if inventory.output_count <= 1 => {
+                    self.context_dir.clone()
+                }
+                BatchLayoutStrategy::Mixed => self.context_dir.join(&illust_id),
+                BatchLayoutStrategy::Flat => self.context_dir.clone(),
+            }
+        };
+
+        Ok(ArtworkPlacement {
+            illust_id,
+            output_count: inventory.output_count,
+            context_dir: self.context_dir.clone(),
+            target_dir,
+            batch_layout,
         })
     }
 }
@@ -147,70 +234,122 @@ fn short_hash(value: &str) -> String {
 mod tests {
     use std::path::Path;
 
-    use crate::config::DownloadMode;
+    use crate::config::{BatchLayoutStrategy, DownloadMode};
 
-    use super::{normalize_keyword_segment, resolve_output_layout};
+    use super::{
+        ArtworkInventory, ArtworkInventoryEntry, normalize_keyword_segment, resolve_output_layout,
+    };
 
     #[test]
-    fn illust_layout_points_directly_to_illust_directory() {
+    fn illust_layout_always_uses_context_dir_regardless_of_batch_layout() {
         let layout = resolve_output_layout(
             DownloadMode::Illust,
             Path::new("/tmp/illust-root"),
             "123456",
         )
         .unwrap();
+        let inventory = ArtworkInventory::new(
+            "123456",
+            vec![ArtworkInventoryEntry::planned("123456_p0.png")],
+        )
+        .unwrap();
 
         assert_eq!(layout.context_dir(), Path::new("/tmp/illust-root/123456"));
         assert_eq!(
-            layout.illust_dir("123456").unwrap(),
+            layout
+                .placement_for_inventory(BatchLayoutStrategy::Flat, &inventory)
+                .unwrap()
+                .target_dir,
             Path::new("/tmp/illust-root/123456")
         );
     }
 
     #[test]
-    fn user_layout_nests_illust_under_user_directory() {
+    fn per_illust_layout_nests_everything_under_illust_directory() {
         let layout =
             resolve_output_layout(DownloadMode::User, Path::new("/tmp/user-root"), "998877")
                 .unwrap();
+        let inventory = ArtworkInventory::new(
+            "123456",
+            vec![ArtworkInventoryEntry::planned("123456_p0.png")],
+        )
+        .unwrap();
 
         assert_eq!(layout.context_dir(), Path::new("/tmp/user-root/998877"));
         assert_eq!(
-            layout.illust_dir("123456").unwrap(),
+            layout
+                .placement_for_inventory(BatchLayoutStrategy::PerIllust, &inventory)
+                .unwrap()
+                .target_dir,
             Path::new("/tmp/user-root/998877/123456")
         );
     }
 
     #[test]
-    fn bookmark_layout_uses_self_user_id_as_context() {
+    fn flat_layout_keeps_batch_outputs_in_context_root() {
+        let layout =
+            resolve_output_layout(DownloadMode::User, Path::new("/tmp/user-root"), "998877")
+                .unwrap();
+        let inventory = ArtworkInventory::new(
+            "123456",
+            vec![ArtworkInventoryEntry::planned("123456_p0.png")],
+        )
+        .unwrap();
+
+        assert_eq!(
+            layout
+                .placement_for_inventory(BatchLayoutStrategy::Flat, &inventory)
+                .unwrap()
+                .target_dir,
+            Path::new("/tmp/user-root/998877")
+        );
+    }
+
+    #[test]
+    fn mixed_layout_keeps_single_output_in_context_root() {
         let layout = resolve_output_layout(
             DownloadMode::Bookmark,
             Path::new("/tmp/bookmark-root"),
             "12345678",
         )
         .unwrap();
+        let inventory = ArtworkInventory::new(
+            "87654321",
+            vec![ArtworkInventoryEntry::planned("87654321.gif")],
+        )
+        .unwrap();
 
         assert_eq!(
-            layout.context_dir(),
+            layout
+                .placement_for_inventory(BatchLayoutStrategy::Mixed, &inventory)
+                .unwrap()
+                .target_dir,
             Path::new("/tmp/bookmark-root/12345678")
-        );
-        assert_eq!(
-            layout.illust_dir("87654321").unwrap(),
-            Path::new("/tmp/bookmark-root/12345678/87654321")
         );
     }
 
     #[test]
-    fn ranking_layout_uses_mode_as_context() {
+    fn mixed_layout_puts_multi_output_artwork_in_illust_directory() {
         let layout = resolve_output_layout(
             DownloadMode::Ranking,
             Path::new("/tmp/ranking-root"),
             "daily",
         )
         .unwrap();
+        let inventory = ArtworkInventory::new(
+            "123456",
+            vec![
+                ArtworkInventoryEntry::planned("123456_p0.png"),
+                ArtworkInventoryEntry::planned("123456_p1.png"),
+            ],
+        )
+        .unwrap();
 
-        assert_eq!(layout.context_dir(), Path::new("/tmp/ranking-root/daily"));
         assert_eq!(
-            layout.illust_dir("123456").unwrap(),
+            layout
+                .placement_for_inventory(BatchLayoutStrategy::Mixed, &inventory)
+                .unwrap()
+                .target_dir,
             Path::new("/tmp/ranking-root/daily/123456")
         );
     }

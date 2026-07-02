@@ -5,6 +5,8 @@ mod support;
 mod download_user;
 #[path = "cli/help.rs"]
 mod help;
+#[path = "cli/organize.rs"]
+mod organize;
 #[path = "cli/parse.rs"]
 mod parse;
 #[path = "cli/retry.rs"]
