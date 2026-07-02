@@ -1,6 +1,8 @@
 #[path = "support/mod.rs"]
 mod support;
 
+#[path = "cli/config.rs"]
+mod config;
 #[path = "cli/download_user.rs"]
 mod download_user;
 #[path = "cli/help.rs"]

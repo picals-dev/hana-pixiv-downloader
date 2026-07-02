@@ -9,6 +9,7 @@ mod download_keyword;
 mod download_ranking;
 mod download_user;
 mod organize;
+mod prompt_support;
 mod retry_cmd;
 mod setup;
 
