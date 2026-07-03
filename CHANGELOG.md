@@ -1,7 +1,5 @@
 # Changelog
 
-所有重要变更都会记录在这个文件里。
-
 ## [0.1.0] - 2026-06-27
 
 ### Added
@@ -32,3 +30,29 @@
 ### Notes
 
 - `setup` 与 `config show` 会明文显示凭据，使用时应避免录屏或共享屏幕
+
+## [0.1.1] - 2026-06-28
+
+### Notes
+
+- 修改 `release.yml`，添加 github token
+
+## [0.1.2] - 2026-07-03
+
+### Added
+
+- 根据平台（Windows、MacOS & Linux）调整 `hpd setup` 的默认配置目录
+- 添加新配置项：`download.batch_layout`，用于配置作品图片的下载布局
+  - `mixed` 单输出平铺，多输出作品分目录
+  - `per_illust` 所有作品都分目录
+  - `flat` 所有作品都直接平铺
+- 新增 `hpd organize` 命令。如果调整了布局，但是原下载目录还保持原来的状态，可以运行此命令整理下载目录
+- 优化 `hpd config` 体验
+  - `hpd config show` 支持 table 展示
+  - `hpd config set` 支持 table 展示原有配置项
+  - `hpd config set <KEY>` 支持字段层面 CLI 交互配置
+
+### Distribution
+
+- 提供标准安装脚本（Windows、MacOS & Linux）
+- 增加预安装验证 CI
