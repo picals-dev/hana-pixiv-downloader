@@ -3,7 +3,7 @@ use std::fs;
 use hana_pixiv_downloader::auth::Credential;
 use wiremock::MockServer;
 
-use crate::support::cli::CliTestContext;
+use crate::support::{cli::CliTestContext, config::toml_path_value};
 
 #[tokio::test]
 async fn config_show_prints_current_values_table() {
@@ -92,7 +92,45 @@ async fn config_set_without_args_shows_reference_table_in_stderr() {
     assert_eq!(extract_table(&help_stdout), extract_table(&missing_stderr));
 }
 
+#[tokio::test]
+async fn config_show_accepts_windows_style_paths_in_config_file() {
+    let server = MockServer::start().await;
+    let ctx = CliTestContext::new(&server).await;
+    let roots = [
+        r"C:\Users\runneradmin\Downloads\Pixiv\illust",
+        r"C:\Users\runneradmin\Downloads\Pixiv\user",
+        r"C:\Users\runneradmin\Downloads\Pixiv\bookmark",
+        r"C:\Users\runneradmin\Downloads\Pixiv\keyword",
+        r"C:\Users\runneradmin\Downloads\Pixiv\ranking",
+    ];
+    write_sample_config_with_roots(&ctx, &roots);
+
+    let output = ctx
+        .command()
+        .args(["config", "show"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8_lossy(&output);
+
+    assert!(stdout.contains(r"C:\Users\runneradmin\Downloads\Pixiv\illust"));
+    assert!(stdout.contains(r"C:\Users\runneradmin\Downloads\Pixiv\ranking"));
+}
+
 fn write_sample_config(ctx: &CliTestContext) {
+    let roots = [
+        ctx.path("downloads/illust").display().to_string(),
+        ctx.path("downloads/user").display().to_string(),
+        ctx.path("downloads/bookmark").display().to_string(),
+        ctx.path("downloads/keyword").display().to_string(),
+        ctx.path("downloads/ranking").display().to_string(),
+    ];
+    write_sample_config_with_roots(ctx, &roots);
+}
+
+fn write_sample_config_with_roots(ctx: &CliTestContext, roots: &[impl AsRef<str>; 5]) {
     let config_dir = ctx.xdg_config_home().join("hana-pixiv-downloader");
     fs::create_dir_all(&config_dir).unwrap();
     fs::write(
@@ -110,20 +148,20 @@ retry = 9
 with_tags = true
 
 [download.roots]
-illust = "{0}"
-user = "{1}"
-bookmark = "{2}"
-keyword = "{3}"
-ranking = "{4}"
+illust = {0}
+user = {1}
+bookmark = {2}
+keyword = {3}
+ranking = {4}
 
 [proxy]
 url = "socks5://127.0.0.1:1080"
 "#,
-            ctx.path("downloads/illust").display(),
-            ctx.path("downloads/user").display(),
-            ctx.path("downloads/bookmark").display(),
-            ctx.path("downloads/keyword").display(),
-            ctx.path("downloads/ranking").display(),
+            toml_path_value(std::path::Path::new(roots[0].as_ref())),
+            toml_path_value(std::path::Path::new(roots[1].as_ref())),
+            toml_path_value(std::path::Path::new(roots[2].as_ref())),
+            toml_path_value(std::path::Path::new(roots[3].as_ref())),
+            toml_path_value(std::path::Path::new(roots[4].as_ref())),
         ),
     )
     .unwrap();

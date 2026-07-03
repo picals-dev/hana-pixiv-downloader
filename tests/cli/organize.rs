@@ -2,7 +2,7 @@ use std::fs;
 
 use wiremock::MockServer;
 
-use crate::support::cli::CliTestContext;
+use crate::support::{cli::CliTestContext, config::toml_path_value};
 
 #[tokio::test]
 async fn organize_dry_run_has_no_side_effects() {
@@ -26,20 +26,20 @@ retry = 3
 with_tags = false
 
 [download.roots]
-illust = "{0}"
-user = "{1}"
-bookmark = "{2}"
-keyword = "{3}"
-ranking = "{4}"
+illust = {0}
+user = {1}
+bookmark = {2}
+keyword = {3}
+ranking = {4}
 
 [proxy]
 url = ""
 "#,
-            ctx.path("downloads/illust").display(),
-            ctx.path("downloads/user").display(),
-            ctx.path("downloads/bookmark").display(),
-            ctx.path("downloads/keyword").display(),
-            ctx.path("downloads/ranking").display(),
+            toml_path_value(&ctx.path("downloads/illust")),
+            toml_path_value(&ctx.path("downloads/user")),
+            toml_path_value(&ctx.path("downloads/bookmark")),
+            toml_path_value(&ctx.path("downloads/keyword")),
+            toml_path_value(&ctx.path("downloads/ranking")),
         ),
     )
     .unwrap();
