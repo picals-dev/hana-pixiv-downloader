@@ -29,3 +29,176 @@ jobs:
 
       - name: 运行 Clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+  installer-syntax:
+    name: installer-syntax
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7.0.0
+
+      - name: 检查 Bash 安装脚本语法
+        run: bash -n install/hpd.sh
+
+      - name: 检查 PowerShell 安装脚本语法
+        shell: pwsh
+        run: |
+          [void][ScriptBlock]::Create((Get-Content "install/hpd.ps1" -Raw))
+
+  installer-smoke:
+    name: installer-smoke-${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            asset_name: hana-pixiv-downloader-x86_64-unknown-linux-gnu.tar.gz
+            archive_kind: tar
+            binary_name: hpd
+            temp_install_dir: hpd-bin
+          - name: macos
+            os: macos-latest
+            asset_name: hana-pixiv-downloader-aarch64-apple-darwin.tar.gz
+            archive_kind: tar
+            binary_name: hpd
+            temp_install_dir: hpd-bin
+          - name: windows
+            os: windows-latest
+            asset_name: hana-pixiv-downloader-x86_64-pc-windows-msvc.zip
+            archive_kind: zip
+            binary_name: hpd.exe
+            temp_install_dir: hpd-bin
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7.0.0
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 Cargo
+        uses: Swatinem/rust-cache@v2.9.1
+
+      - name: 安装 Python
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.x"
+
+      - name: 构建发布二进制
+        run: cargo build --locked --release
+
+      - name: 生成本地安装测试夹具（Unix）
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          fixture_dir="$RUNNER_TEMP/fixture"
+          archive_dir="$RUNNER_TEMP/archive"
+          mkdir -p "$fixture_dir/latest/download" "$fixture_dir/download/vtest" "$archive_dir"
+          cp target/release/hpd "$archive_dir/hpd"
+          tar -czf "$fixture_dir/latest/download/${{ matrix.asset_name }}" -C "$archive_dir" hpd
+          cp "$fixture_dir/latest/download/${{ matrix.asset_name }}" "$fixture_dir/download/vtest/${{ matrix.asset_name }}"
+          export FIXTURE_DIR="$fixture_dir"
+          export ASSET_NAME="${{ matrix.asset_name }}"
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          fixture_dir = Path(os.environ["FIXTURE_DIR"])
+          asset_name = os.environ["ASSET_NAME"]
+          for relative in ("latest/download", "download/vtest"):
+              folder = fixture_dir / relative
+              asset_path = folder / asset_name
+              digest = hashlib.sha256(asset_path.read_bytes()).hexdigest()
+              (folder / "SHA256SUMS.txt").write_text(f"{digest}  {asset_name}\n", encoding="utf-8")
+          PY
+
+      - name: 生成本地安装测试夹具（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $fixtureDir = Join-Path $env:RUNNER_TEMP "fixture"
+          $archiveDir = Join-Path $env:RUNNER_TEMP "archive"
+          New-Item -ItemType Directory -Force -Path (Join-Path $fixtureDir "latest/download") | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $fixtureDir "download/vtest") | Out-Null
+          New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
+          Copy-Item "target/release/hpd.exe" (Join-Path $archiveDir "hpd.exe")
+          Compress-Archive -Path (Join-Path $archiveDir "hpd.exe") -DestinationPath (Join-Path $fixtureDir "latest/download/${{ matrix.asset_name }}")
+          Copy-Item (Join-Path $fixtureDir "latest/download/${{ matrix.asset_name }}") (Join-Path $fixtureDir "download/vtest/${{ matrix.asset_name }}")
+          $env:FIXTURE_DIR = $fixtureDir
+          $env:ASSET_NAME = "${{ matrix.asset_name }}"
+          @'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          fixture_dir = Path(os.environ["FIXTURE_DIR"])
+          asset_name = os.environ["ASSET_NAME"]
+          for relative in ("latest/download", "download/vtest"):
+              folder = fixture_dir / relative
+              asset_path = folder / asset_name
+              digest = hashlib.sha256(asset_path.read_bytes()).hexdigest()
+              (folder / "SHA256SUMS.txt").write_text(f"{digest}  {asset_name}\n", encoding="utf-8")
+          '@ | python -
+
+      - name: 运行 Unix 安装 smoke test
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          fixture_dir="$RUNNER_TEMP/fixture"
+          fixed_dir="$RUNNER_TEMP/${{ matrix.temp_install_dir }}-fixed"
+          latest_dir="$RUNNER_TEMP/${{ matrix.temp_install_dir }}-latest"
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$fixture_dir" >/tmp/hpd-install-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          ready=0
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS http://127.0.0.1:8765/ >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" -ne 1 ]]; then
+            cat /tmp/hpd-install-server.log
+            exit 1
+          fi
+          HPD_DIST_BASE_URL="http://127.0.0.1:8765" bash install/hpd.sh --version vtest --install-dir "$fixed_dir" --no-modify-path
+          "$fixed_dir/hpd" --help >/dev/null
+          HPD_DIST_BASE_URL="http://127.0.0.1:8765" bash install/hpd.sh --install-dir "$latest_dir" --no-modify-path
+          "$latest_dir/hpd" --help >/dev/null
+
+      - name: 运行 Windows 安装 smoke test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $fixtureDir = Join-Path $env:RUNNER_TEMP "fixture"
+          $fixedDir = Join-Path $env:RUNNER_TEMP "${{ matrix.temp_install_dir }}-fixed"
+          $latestDir = Join-Path $env:RUNNER_TEMP "${{ matrix.temp_install_dir }}-latest"
+          $server = Start-Process -FilePath python -ArgumentList "-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", $fixtureDir -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 10; $i++) {
+              try {
+                Invoke-WebRequest -Uri "http://127.0.0.1:8765/" | Out-Null
+                $ready = $true
+                break
+              } catch {
+                Start-Sleep -Seconds 1
+              }
+            }
+            if (-not $ready) {
+              throw "本地 HTTP 安装测试服务启动失败。"
+            }
+            powershell -ExecutionPolicy Bypass -File install/hpd.ps1 -Version vtest -InstallDir $fixedDir -NoModifyPath -BaseUrl "http://127.0.0.1:8765"
+            & (Join-Path $fixedDir "hpd.exe") --help | Out-Null
+            powershell -ExecutionPolicy Bypass -File install/hpd.ps1 -InstallDir $latestDir -NoModifyPath -BaseUrl "http://127.0.0.1:8765"
+            & (Join-Path $latestDir "hpd.exe") --help | Out-Null
+          } finally {
+            if ($server -and -not $server.HasExited) {
+              Stop-Process -Id $server.Id -Force
+            }
+          }

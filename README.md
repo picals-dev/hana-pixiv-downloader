@@ -2,6 +2,20 @@
 
 基于 Rust 的轻量 Pixiv CLI 下载器。
 
+## 安装
+
+macOS / Linux：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/picals-dev/hana-pixiv-downloader/master/install/hpd.sh | bash
+```
+
+Windows PowerShell：
+
+```powershell
+powershell -ExecutionPolicy Bypass -c 'irm https://raw.githubusercontent.com/picals-dev/hana-pixiv-downloader/master/install/hpd.ps1 | iex'
+```
+
 ## 快速开始
 
 首次使用先运行：
@@ -126,24 +140,7 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 - `config.toml` 保存普通配置
 - `credentials` 保存 `PHPSESSID` 和 `user_id`
 
-常用配置键：
-
-- `auth.phpsessid`
-- `auth.user_id`
-- `download.count`
-- `download.sort`
-- `download.r18`
-- `download.ai`
-- `download.concurrent`
-- `download.timeout`
-- `download.retry`
-- `download.with_tags`
-- `download.roots.illust`
-- `download.roots.user`
-- `download.roots.bookmark`
-- `download.roots.keyword`
-- `download.roots.ranking`
-- `proxy.url`
+常用配置键：运行 `hpd config show`
 
 常用环境变量：
 
