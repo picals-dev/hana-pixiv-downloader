@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/picals-dev/hana-pixiv-downloader/ma
 Windows PowerShell：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c 'irm https://raw.githubusercontent.com/picals-dev/hana-pixiv-downloader/master/install/hpd.ps1 | iex'
+powershell -c 'irm https://raw.githubusercontent.com/picals-dev/hana-pixiv-downloader/master/install/hpd.ps1 | iex'
 ```
 
 ## 快速开始

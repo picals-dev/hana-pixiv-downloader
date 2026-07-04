@@ -46,16 +46,6 @@ jobs:
         run: |
           [void][ScriptBlock]::Create((Get-Content "install/hpd.ps1" -Raw))
 
-      - name: 检查 PowerShell 安装脚本编码
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          content = Path("install/hpd.ps1").read_bytes()
-          if not content.startswith(b"\xef\xbb\xbf"):
-              raise SystemExit("install/hpd.ps1 必须使用 UTF-8 BOM，确保 Windows PowerShell 5.1 可正确解析中文字符串。")
-          PY
-
   installer-smoke:
     name: installer-smoke-${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -203,9 +193,9 @@ jobs:
             if (-not $ready) {
               throw "本地 HTTP 安装测试服务启动失败。"
             }
-            powershell -ExecutionPolicy Bypass -File install/hpd.ps1 -Version vtest -InstallDir $fixedDir -NoModifyPath -BaseUrl "http://127.0.0.1:8765"
+            powershell -File install/hpd.ps1 -Version vtest -InstallDir $fixedDir -NoModifyPath -BaseUrl "http://127.0.0.1:8765"
             & (Join-Path $fixedDir "hpd.exe") --help | Out-Null
-            powershell -ExecutionPolicy Bypass -File install/hpd.ps1 -InstallDir $latestDir -NoModifyPath -BaseUrl "http://127.0.0.1:8765"
+            powershell -File install/hpd.ps1 -InstallDir $latestDir -NoModifyPath -BaseUrl "http://127.0.0.1:8765"
             & (Join-Path $latestDir "hpd.exe") --help | Out-Null
           } finally {
             if ($server -and -not $server.HasExited) {

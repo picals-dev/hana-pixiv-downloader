@@ -140,7 +140,7 @@ function Add-UserPathEntry {
         $env:Path = "$Entry;$env:Path"
     }
 
-    return "已写入用户级 PATH，重新打开 PowerShell 或 CMD 后生效。"
+    return "已写入用户级 PATH，重新打开 PowerShell 后生效。"
 }
 
 if (-not $PSBoundParameters.ContainsKey("Version") -and $env:HPD_VERSION) {
