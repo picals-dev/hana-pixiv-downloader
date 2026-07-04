@@ -46,6 +46,16 @@ jobs:
         run: |
           [void][ScriptBlock]::Create((Get-Content "install/hpd.ps1" -Raw))
 
+      - name: 检查 PowerShell 安装脚本编码
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          content = Path("install/hpd.ps1").read_bytes()
+          if not content.startswith(b"\xef\xbb\xbf"):
+              raise SystemExit("install/hpd.ps1 必须使用 UTF-8 BOM，确保 Windows PowerShell 5.1 可正确解析中文字符串。")
+          PY
+
   installer-smoke:
     name: installer-smoke-${{ matrix.name }}
     runs-on: ${{ matrix.os }}

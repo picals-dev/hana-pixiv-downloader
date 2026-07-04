@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$Version,
     [string]$InstallDir,
@@ -53,12 +53,35 @@ function Resolve-Tag {
 }
 
 function Resolve-AssetName {
-    if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
+    if ($env:OS -ne "Windows_NT") {
         Fail "当前脚本仅支持 Windows。"
     }
 
-    $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-    if ($architecture -ne [System.Runtime.InteropServices.Architecture]::X64) {
+    $architecture = $null
+    $runtimeInfoType = [System.Type]::GetType("System.Runtime.InteropServices.RuntimeInformation")
+    if ($runtimeInfoType) {
+        $osArchitectureProperty = $runtimeInfoType.GetProperty("OSArchitecture")
+        if ($osArchitectureProperty) {
+            $architecture = $osArchitectureProperty.GetValue($null, @()).ToString()
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($architecture)) {
+        $architecture = $env:PROCESSOR_ARCHITEW6432
+    }
+
+    if ([string]::IsNullOrWhiteSpace($architecture)) {
+        $architecture = $env:PROCESSOR_ARCHITECTURE
+    }
+
+    switch ($architecture.ToUpperInvariant()) {
+        "AMD64" { $architecture = "X64" }
+        "X86_64" { $architecture = "X64" }
+        "ARM64" { $architecture = "Arm64" }
+        "X86" { $architecture = "X86" }
+    }
+
+    if ($architecture -ne "X64") {
         Fail "当前平台暂不支持自动安装：Windows $architecture。当前仅支持 Windows x64。"
     }
 
