@@ -1,4 +1,3 @@
-﻿[CmdletBinding()]
 param(
     [string]$Version,
     [string]$InstallDir,
