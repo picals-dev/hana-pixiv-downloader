@@ -1,6 +1,6 @@
 [package]
 name = "hana-pixiv-downloader"
-version = "0.1.0"
+version = "0.1.3"
 edition = "2024"
 rust-version = "1.85"
 description = "开箱即用的 Pixiv 图片下载 CLI 工具"

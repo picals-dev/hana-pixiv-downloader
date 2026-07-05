@@ -56,3 +56,21 @@
 
 - 提供标准安装脚本（Windows、MacOS & Linux）
 - 增加预安装验证 CI
+
+## [0.1.3] - 2026-07-05
+
+### Added
+
+- 新增 `hpd config clean` 命令，可一键清空整个配置目录并恢复到首次使用状态
+
+### Improved
+
+- 优化已有配置时的 `hpd setup` 体验
+  - 已保存的 `PHPSESSID` 支持直接回车复用
+  - 自动识别 `userId` 失败时，会根据 `PHPSESSID` 是否变更决定是否复用已保存 `userId`
+
+### Distribution
+
+- 修复 Windows PowerShell 安装脚本
+  - README 中的一行安装命令不再依赖 `ExecutionPolicy Bypass`
+  - 修复脚本编码与平台架构识别问题
