@@ -94,6 +94,7 @@ hpd config set download.with_tags true
 hpd config set download.roots.user ~/Pictures/Pixiv/user
 hpd config set auth.phpsessid <PHPSESSID>
 hpd config set auth.user_id <USER_ID>
+hpd config clean
 ```
 
 ### 重试失败项
@@ -139,6 +140,7 @@ CLI 参数 > 环境变量 > config.toml > 默认值
 
 - `config.toml` 保存普通配置
 - `credentials` 保存 `PHPSESSID` 和 `user_id`
+- 如需恢复到首次使用状态，可运行 `hpd config clean` 清空整个配置目录
 
 常用配置键：运行 `hpd config show`
 

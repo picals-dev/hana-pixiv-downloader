@@ -12,6 +12,8 @@ pub struct ConfigCommand {
 pub enum ConfigAction {
     /// 查看当前配置
     Show,
+    /// 清除本地配置并恢复到首次使用状态
+    Clean,
     /// 设置单个配置项；不带参数时显示完整配置字段表
     #[command(disable_help_flag = true)]
     Set(SetConfigArgs),

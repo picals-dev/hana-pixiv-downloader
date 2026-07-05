@@ -119,6 +119,51 @@ async fn config_show_accepts_windows_style_paths_in_config_file() {
     assert!(stdout.contains(r"C:\Users\runneradmin\Downloads\Pixiv\ranking"));
 }
 
+#[tokio::test]
+async fn config_clean_removes_entire_config_directory() {
+    let server = MockServer::start().await;
+    let ctx = CliTestContext::new(&server).await;
+    write_sample_config(&ctx);
+    let config_dir = ctx.xdg_config_home().join("hana-pixiv-downloader");
+    let failures_dir = config_dir.join("failures");
+    fs::create_dir_all(&failures_dir).unwrap();
+    fs::write(failures_dir.join("sample.json"), "{}").unwrap();
+
+    let output = ctx
+        .command()
+        .args(["config", "clean"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8_lossy(&output);
+
+    assert!(stdout.contains("已清除配置目录"));
+    assert!(stdout.contains("hpd setup"));
+    assert!(!config_dir.exists());
+}
+
+#[tokio::test]
+async fn config_clean_is_idempotent_when_config_directory_is_missing() {
+    let server = MockServer::start().await;
+    let ctx = CliTestContext::new(&server).await;
+    let config_dir = ctx.xdg_config_home().join("hana-pixiv-downloader");
+
+    let output = ctx
+        .command()
+        .args(["config", "clean"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8_lossy(&output);
+
+    assert!(stdout.contains("当前已是首次使用状态"));
+    assert!(stdout.contains(&config_dir.display().to_string()));
+}
+
 fn write_sample_config(ctx: &CliTestContext) {
     let roots = [
         ctx.path("downloads/illust").display().to_string(),

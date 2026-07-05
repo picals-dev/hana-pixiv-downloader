@@ -32,6 +32,7 @@ pub async fn dispatch(cli: Cli) -> AppResult<()> {
         Command::Retry(args) => retry_cmd::run(args).await,
         Command::Config(config) => match config.action {
             ConfigAction::Show => config_cmd::show().await,
+            ConfigAction::Clean => config_cmd::clean().await,
             ConfigAction::Set(args) => config_cmd::set(args).await,
         },
         Command::Organize(args) => organize::run(args).await,
