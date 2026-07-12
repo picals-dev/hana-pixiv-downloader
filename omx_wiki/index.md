@@ -1,6 +1,6 @@
 # Wiki Index
 
-> 16 pages | Last updated: 2026-06-26T00:00:00.000Z
+> 17 pages | Last updated: 2026-07-12T16:06:58.509Z
 
 ## architecture
 
@@ -8,6 +8,10 @@
 - [Picals Crawler 下载预览与 Ranking 调研报告 2026-06-21](picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md) — # Picals Crawler 下载预览与 Ranking 调研报告 2026-06-21
 - [Picals Crawler 技术设计文档](picals-crawler-技术设计文档.md) — # Picals-Crawler 技术设计文档
 - [Picals Crawler 项目理解基线](picals-crawler-项目理解基线.md) — # Picals Crawler 项目理解基线
+
+## convention
+
+- [Hana Pixiv Downloader 标准发布流程](hana-pixiv-downloader-标准发布流程.md) — # Hana Pixiv Downloader 标准发布流程
 
 ## product
 

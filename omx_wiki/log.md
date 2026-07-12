@@ -184,3 +184,25 @@
 ## [2026-06-25T08:00:33.986Z] lint
 - **Pages:** picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
 - **Summary:** Lint: 4 issues (0 orphan, 0 stale, 0 broken, 1 contradictions)
+## [2026-07-12T16:05:02.119Z] add
+- **Pages:** hana-pixiv-downloader-标准发布流程.md, hana-pixiv-downloader-重命名收口实现记录-2026-06-26.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md, picals-crawler-ugoira-gif-实现记录-2026-06-24.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试指南.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-返工收尾实现记录-2026-06-25.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-07-12T16:05:19.172Z] lint
+- **Pages:** hana-pixiv-downloader-标准发布流程.md, picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 6 issues (1 orphan, 0 stale, 0 broken, 2 contradictions)
+
+## [2026-07-12T16:05:19.172Z] query
+- **Pages:** hana-pixiv-downloader-标准发布流程.md, picals-crawler-技术设计文档.md, picals-crawler-产品设计文档.md, hana-pixiv-downloader-重命名收口实现记录-2026-06-26.md, picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md, picals-crawler-项目理解基线.md, picals-crawler-ugoira-gif-实现记录-2026-06-24.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计附录-实现细节.md, typescript-原项目实现观察.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-测试指南.md, picals-crawler-返工收尾实现记录-2026-06-25.md
+- **Summary:** Query "标准发布流程 commit tag changelog github actions" → 16 results (of 16 total)
+## [2026-07-12T16:06:58.511Z] add
+- **Pages:** hana-pixiv-downloader-标准发布流程.md, hana-pixiv-downloader-重命名收口实现记录-2026-06-26.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md, picals-crawler-ugoira-gif-实现记录-2026-06-24.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-产品设计文档.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计文档.md, picals-crawler-技术设计附录-实现细节.md, picals-crawler-测试指南.md, picals-crawler-测试架构升级实现记录-2026-06-23.md, picals-crawler-返工收尾实现记录-2026-06-25.md, picals-crawler-项目理解基线.md, typescript-原项目实现观察.md
+- **Summary:** Refreshed wiki index and derived metadata surfaces
+
+## [2026-07-12T16:07:04.859Z] lint
+- **Pages:** picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md, picals-crawler-产品设计文档.md, picals-crawler-技术设计文档.md, hana-pixiv-downloader-标准发布流程.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md
+- **Summary:** Lint: 5 issues (0 orphan, 0 stale, 0 broken, 2 contradictions)
+
+## [2026-07-12T16:07:14.399Z] query
+- **Pages:** hana-pixiv-downloader-标准发布流程.md, picals-crawler-技术设计文档.md, picals-crawler-产品设计文档.md, hana-pixiv-downloader-重命名收口实现记录-2026-06-26.md, picals-crawler-ugoira-gif-下载调研报告-2026-06-24.md, picals-crawler-项目理解基线.md, picals-crawler-ugoira-gif-实现记录-2026-06-24.md, picals-crawler-下载预览与-ranking-调研报告-2026-06-21.md, picals-crawler-产品设计附录-交互与路线图.md, picals-crawler-技术设计附录-实现细节.md, typescript-原项目实现观察.md, picals-crawler-下载预览与-ranking-调研附录-实验与竞品.md, picals-crawler-net-层-ssot-实现记录-2026-06-22.md, picals-crawler-ux-优化执行记录-2026-06-21.md, picals-crawler-测试指南.md, picals-crawler-返工收尾实现记录-2026-06-25.md
+- **Summary:** Query "标准发布流程 commit tag changelog github actions" → 16 results (of 16 total)

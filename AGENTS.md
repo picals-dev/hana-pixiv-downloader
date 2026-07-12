@@ -18,6 +18,13 @@ cargo check                          # 仅类型检查，无产物
 - 该文档是当前仓库测试分层、support 边界、CLI harness、结构性禁止项与验证命令的 SSOT。
 - 如果历史测试写法、旧 session-log、或个人习惯与该文档冲突，以测试指南为准。
 
+## 发布路由
+
+- **凡是版本升级、正式发布、创建或补发 tag、更新 Changelog / release notes、推送发布提交，或排查 release workflow，必须先阅读**：[Hana Pixiv Downloader 标准发布流程](./omx_wiki/hana-pixiv-downloader-标准发布流程.md)。
+- 该文档是版本元数据、发布门禁、单行中文 commit、轻量 tag、`master` → tag 推送顺序、GitHub Actions 监控与 crates.io 边界的 SSOT。
+- 发布必须包含与 tag 同名的 `.github/release-notes/vX.Y.Z.md`；本地门禁或远端三平台 workflow 未完成时，不得宣称发布完成。
+- 如果历史提交习惯、旧 session-log 或临时操作方式与发布指南冲突，以发布指南为准。
+
 ## 技术栈
 
 | 领域 | 选型 | 理由 |
@@ -38,5 +45,5 @@ cargo check                          # 仅类型检查，无产物
 2. **中文优先**。CLI 输出、错误信息、`--help` 文本用中文。代码注释用中文。模块文档（`//!`）用中文。
 3. **错误信息具体可操作**。返回值必须是 `AppResult<T>` 或 `Result<T, CrawlerError>`。错误消息指明原因 + 可行的下一步。
 4. **新增依赖时，必须逐个论证**。选型向「现代 Rust + 轻量 + 优雅 DX」看齐。默认偏好：eyre（非 anyhow）、jiff（非 chrono）、inquire（非 dialoguer）、dirs-next（非 dirs）、log + env_logger（非 tracing）。
-5. **不要碰的文件**：`.omx/`、`.codegraph/`、`omx_wiki/`、`.gitmodules`。它们不是项目源码。
+5. **不要碰的文件**：`.omx/`、`.codegraph/`、`.gitmodules`。`omx_wiki/` 仅在用户明确要求维护项目知识、修订 SSOT 或建立路由时允许修改，并必须遵循 wiki 工作流；其他源码任务不得顺手改动。
 6. **不要在 comments 里写 byline 或 attribution**。纯中文注释，没有 `// 作者: xxx` 或 `// NOTE:`
