@@ -373,7 +373,7 @@ async fn replay_mixed_multi_page_image_retry_stays_in_illust_directory() {
 }
 
 #[tokio::test]
-async fn replay_mixed_image_retry_keeps_failure_when_pages_cannot_be_rebuilt() {
+async fn replay_mixed_image_retry_uses_recorded_target_when_pages_cannot_be_rebuilt() {
     let _lock = lock_env().await;
     let temp = tempdir().unwrap();
     let _config_home = set_config_home(temp.path());
@@ -396,6 +396,16 @@ async fn replay_mixed_image_retry_keeps_failure_when_pages_cannot_be_rebuilt() {
             format!("{}/artworks/123456", server.uri()),
         ))
         .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/img-original/123456_p0.png"))
+        .and(header(
+            "referer",
+            format!("{}/artworks/123456", server.uri()),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ok".to_vec()))
         .mount(&server)
         .await;
 
@@ -431,17 +441,18 @@ async fn replay_mixed_image_retry_keeps_failure_when_pages_cannot_be_rebuilt() {
             illust_id: Some("123456".to_string()),
             source_url: Some(format!("{}/img-original/123456_p0.png", server.uri())),
             target_path: Some(old_target.to_string_lossy().into_owned()),
-            error_kind: "timeout".to_string(),
-            error_message: "timeout".to_string(),
-            retryable: true,
+            error_kind: "request".to_string(),
+            error_message: "error decoding response body".to_string(),
+            retryable: false,
         }],
     )
     .await
     .unwrap();
 
-    assert_eq!(report.recovered, 0);
-    assert_eq!(report.remaining_records.len(), 1);
-    assert!(!old_target.exists());
+    assert_eq!(report.attempted, 1);
+    assert_eq!(report.recovered, 1);
+    assert!(report.remaining_records.is_empty());
+    assert!(old_target.exists());
     assert!(!expected_target.exists());
 }
 

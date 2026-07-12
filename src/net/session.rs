@@ -580,7 +580,10 @@ pub(crate) fn resolve_base_url(explicit_base_url: Option<&Url>) -> AppResult<Url
 #[cfg(test)]
 mod tests {
     use std::{
+        io::{Read, Write},
+        net::TcpListener,
         sync::{Arc, Mutex},
+        thread::{self, JoinHandle},
         time::{Duration, SystemTime},
     };
 
@@ -595,11 +598,44 @@ mod tests {
     use crate::{
         auth::Credential,
         config::{DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder},
+        failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
         net::{HostKind, NetEvent},
     };
     use url::Url;
 
     use super::{PixivNetSession, RuntimeHooks};
+
+    fn spawn_raw_download_server(responses: Vec<(usize, &'static [u8])>) -> (Url, JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let handle = thread::spawn(move || {
+            for (content_length, body) in responses {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0u8; 1024];
+                loop {
+                    let read = stream.read(&mut buffer).unwrap();
+                    if read == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&buffer[..read]);
+                    if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+                stream.write_all(body).unwrap();
+                stream.flush().unwrap();
+            }
+        });
+
+        (Url::parse(&format!("http://{address}")).unwrap(), handle)
+    }
 
     #[derive(Clone)]
     struct ManualClock {
@@ -888,5 +924,86 @@ mod tests {
         assert!(format!("{error:#}").contains("500"));
         assert!(!target_path.exists());
         assert!(!temp.path().join("123456_p0.png.part").exists());
+    }
+
+    #[tokio::test]
+    async fn truncated_download_body_is_persisted_as_retryable_interruption() {
+        let (base_url, server) = spawn_raw_download_server(vec![(10, b"abc")]);
+        let resolved = options(5, 1);
+        let session = PixivNetSession::new_with_base_url(
+            resolved.clone(),
+            Credential::new("cookie").unwrap(),
+            base_url.clone(),
+        )
+        .unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let target_path = temp.path().join("123456_p0.png");
+        let source_url = base_url.join("/123456_p0.png").unwrap().to_string();
+
+        let error = session
+            .download_original_image(&source_url, "123456", &target_path)
+            .await
+            .unwrap_err();
+        server.join().unwrap();
+
+        let record = FailureRecord::from_report(
+            DownloadMode::Illust,
+            FailureStage::Download,
+            Some("123456".to_string()),
+            Some(source_url),
+            Some(target_path.to_string_lossy().into_owned()),
+            &error,
+        );
+        let manifest = FailureManifest::new(
+            ReplayCommand::Illust {
+                illust_id: "123456".to_string(),
+                options: ReplayOptions::from(&resolved),
+            },
+            vec![record],
+        )
+        .unwrap();
+        let decoded: FailureManifest =
+            serde_json::from_slice(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+
+        assert_eq!(decoded.records[0].error_kind, "download_interrupted");
+        assert!(decoded.records[0].retryable);
+        assert!(decoded.records[0].error_message.contains("已接收 3 字节"));
+        assert!(!target_path.exists());
+        assert!(!temp.path().join("123456_p0.png.part").exists());
+    }
+
+    #[tokio::test]
+    async fn truncated_download_body_is_retried_by_session_policy() {
+        let (base_url, server) = spawn_raw_download_server(vec![(10, b"abc"), (10, b"abcdefghij")]);
+        let clock = ManualClock::new(SystemTime::UNIX_EPOCH);
+        let session = PixivNetSession::new_with_hooks(
+            options(5, 2),
+            Credential::new("cookie").unwrap(),
+            base_url.clone(),
+            clock.hooks(),
+        )
+        .unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let target_path = temp.path().join("123456_p0.png");
+
+        session
+            .download_original_image(
+                base_url.join("/123456_p0.png").unwrap().as_str(),
+                "123456",
+                &target_path,
+            )
+            .await
+            .unwrap();
+        server.join().unwrap();
+
+        assert_eq!(std::fs::read(&target_path).unwrap(), b"abcdefghij");
+        assert_eq!(clock.sleeps.lock().unwrap().len(), 1);
+        assert!(clock.events.lock().unwrap().iter().any(|event| matches!(
+            event,
+            NetEvent::Retry {
+                kind: crate::net::RequestKind::ImageDownload,
+                ..
+            }
+        )));
     }
 }

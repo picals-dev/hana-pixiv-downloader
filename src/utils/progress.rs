@@ -13,9 +13,9 @@ use std::{
 use indicatif::{ProgressBar, ProgressStyle};
 
 const PROGRESS_BAR_TEMPLATE: &str =
-    "[{elapsed_precise}] {bar:40.cyan/blue} 总图片 {pos}/{len} | {msg}";
+    "[{elapsed_precise}] {bar:20.cyan/blue} 总图片 {pos}/{len} | {wide_msg}";
 const ORGANIZE_PROGRESS_BAR_TEMPLATE: &str =
-    "[{elapsed_precise}] {bar:40.cyan/blue} 总作品 {pos}/{len} | {msg}";
+    "[{elapsed_precise}] {bar:20.cyan/blue} 总作品 {pos}/{len} | {wide_msg}";
 const PROGRESS_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
@@ -101,13 +101,11 @@ impl DownloadProgress {
     }
 
     pub(crate) fn record_unit_completion(&self, illust_id: &str, failed: bool) {
-        self.bar.inc(1);
-        let snapshot = {
+        {
             let mut state = self.state.lock().expect("progress state lock poisoned");
             state.record_illust_progress(illust_id, failed);
-            state.snapshot(self.bar.position(), Instant::now())
-        };
-        self.bar.set_message(render_snapshot_message(snapshot));
+        }
+        self.bar.inc(1);
     }
 
     #[cfg(test)]
@@ -440,5 +438,19 @@ mod tests {
     #[test]
     fn progress_template_labels_total_images() {
         assert!(super::PROGRESS_BAR_TEMPLATE.contains("总图片 {pos}/{len}"));
+    }
+
+    #[test]
+    fn progress_templates_truncate_messages_to_terminal_width() {
+        assert!(super::PROGRESS_BAR_TEMPLATE.contains("{wide_msg}"));
+        assert!(!super::PROGRESS_BAR_TEMPLATE.contains("{msg}"));
+        assert!(super::ORGANIZE_PROGRESS_BAR_TEMPLATE.contains("{wide_msg}"));
+        assert!(!super::ORGANIZE_PROGRESS_BAR_TEMPLATE.contains("{msg}"));
+    }
+
+    #[test]
+    fn progress_templates_keep_fixed_content_compact() {
+        assert!(super::PROGRESS_BAR_TEMPLATE.contains("{bar:20.cyan/blue}"));
+        assert!(super::ORGANIZE_PROGRESS_BAR_TEMPLATE.contains("{bar:20.cyan/blue}"));
     }
 }

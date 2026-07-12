@@ -80,6 +80,15 @@ impl FailureRecord {
             retryable: classification.retryable,
         }
     }
+
+    pub(crate) fn is_retry_candidate(&self) -> bool {
+        self.retryable
+            || (self.stage == FailureStage::Download
+                && self.source_url.is_some()
+                && self.target_path.is_some()
+                && (self.error_kind == "request"
+                    || (self.error_kind == "unknown" && self.error_message.contains("os error"))))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -545,6 +554,40 @@ mod tests {
 
         assert_eq!(classification.error_kind, "convert");
         assert!(classification.retryable);
+    }
+
+    #[test]
+    fn legacy_download_transport_errors_remain_retry_candidates() {
+        let record = FailureRecord {
+            mode: DownloadMode::Illust,
+            stage: FailureStage::Download,
+            illust_id: Some("123456".to_string()),
+            source_url: Some("https://example.com/123456_p0.png".to_string()),
+            target_path: Some("/tmp/hpd/123456/123456_p0.png".to_string()),
+            error_kind: "request".to_string(),
+            error_message: "error decoding response body".to_string(),
+            retryable: false,
+        };
+
+        assert!(record.is_retry_candidate());
+    }
+
+    #[test]
+    fn non_retryable_semantic_errors_are_not_legacy_retry_candidates() {
+        for error_kind in ["auth", "config", "parse", "json"] {
+            let record = FailureRecord {
+                mode: DownloadMode::Illust,
+                stage: FailureStage::Download,
+                illust_id: Some("123456".to_string()),
+                source_url: Some("https://example.com/123456_p0.png".to_string()),
+                target_path: Some("/tmp/hpd/123456/123456_p0.png".to_string()),
+                error_kind: error_kind.to_string(),
+                error_message: error_kind.to_string(),
+                retryable: false,
+            };
+
+            assert!(!record.is_retry_candidate());
+        }
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! 失败清单回放执行。
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, path::Path, sync::Arc};
 
 use crate::{
     auth::Credential,
@@ -65,7 +65,7 @@ async fn replay_failures_with_options(
     let mut tag_record_indices = Vec::new();
 
     for (index, record) in records.iter().cloned().enumerate() {
-        if !record.retryable {
+        if !record.is_retry_candidate() {
             report.skipped_non_retryable += 1;
             report.remaining_records.push(record);
             continue;
@@ -163,16 +163,24 @@ async fn replay_image_download_record(
         return Ok(None);
     };
 
-    let inventory = match rebuild_retry_inventory(&session, &illust_id).await {
-        Ok(inventory) => inventory,
-        Err(_) if !options.mode.is_batch() => {
-            build_single_source_inventory(&illust_id, &source_url)?
+    let target_dir = match rebuild_retry_inventory(&session, &illust_id).await {
+        Ok(inventory) => {
+            layout
+                .placement_for_inventory(options.batch_layout, &inventory)?
+                .target_dir
         }
-        Err(_) => return Ok(None),
+        Err(_) => match recorded_target_dir(&record) {
+            Some(target_dir) => target_dir,
+            None => {
+                layout
+                    .placement_for_inventory(
+                        options.batch_layout,
+                        &build_single_source_inventory(&illust_id, &source_url)?,
+                    )?
+                    .target_dir
+            }
+        },
     };
-    let target_dir = layout
-        .placement_for_inventory(options.batch_layout, &inventory)?
-        .target_dir;
 
     let result = crate::crawler::shared::download_artworks(
         options.clone(),
@@ -209,6 +217,13 @@ fn build_single_source_inventory(illust_id: &str, source_url: &str) -> AppResult
             source_url,
         )?)],
     )
+}
+
+fn recorded_target_dir(record: &FailureRecord) -> Option<std::path::PathBuf> {
+    Path::new(record.target_path.as_deref()?)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(Path::to_path_buf)
 }
 
 fn is_direct_image_retry_record(record: &FailureRecord) -> bool {

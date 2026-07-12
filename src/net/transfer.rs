@@ -23,30 +23,38 @@ pub(crate) async fn stream_response_to_temp_file(
     let temp_path = temporary_download_path(target_path);
 
     if let Some(parent) = target_path.parent() {
-        fs::create_dir_all(parent).await?;
+        fs::create_dir_all(parent).await.map_err(CrawlerError::Io)?;
     }
 
     let _ = fs::remove_file(&temp_path).await;
     let stream_result = async {
-        let mut file = fs::File::create(&temp_path).await?;
+        let mut file = fs::File::create(&temp_path)
+            .await
+            .map_err(CrawlerError::Io)?;
         let mut stream = response.bytes_stream();
         let mut written = 0u64;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
+            let chunk = chunk.map_err(|error| {
+                CrawlerError::DownloadInterrupted(format!(
+                    "下载响应流中断（已接收 {written} 字节）: {error}"
+                ))
+            })?;
             let chunk_len = chunk.len() as u64;
             written += chunk_len;
-            file.write_all(&chunk).await?;
+            file.write_all(&chunk).await.map_err(CrawlerError::Io)?;
             if let Some(observer) = &on_chunk {
                 observer(chunk_len);
             }
         }
-        file.flush().await?;
+        file.flush().await.map_err(CrawlerError::Io)?;
         drop(file);
 
         ensure_non_empty_body(written as usize)?;
         ensure_content_length(content_length, written)?;
-        fs::rename(&temp_path, target_path).await?;
+        fs::rename(&temp_path, target_path)
+            .await
+            .map_err(CrawlerError::Io)?;
         Ok::<u64, eyre::Report>(written)
     }
     .await;
