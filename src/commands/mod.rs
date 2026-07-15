@@ -12,6 +12,7 @@ mod organize;
 mod prompt_support;
 mod retry_cmd;
 mod setup;
+mod update;
 
 use crate::{
     cli::{Cli, Command, config::ConfigAction, download::DownloadSubcommand},
@@ -36,5 +37,6 @@ pub async fn dispatch(cli: Cli) -> AppResult<()> {
             ConfigAction::Set(args) => config_cmd::set(args).await,
         },
         Command::Organize(args) => organize::run(args).await,
+        Command::Update => update::run().await,
     }
 }

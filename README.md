@@ -105,6 +105,15 @@ hpd retry /path/to/failures.toml
 
 当批量下载里仍有可重试失败项时，工具会生成 manifest，后续如果想要再重试可直接凭此 `retry`。
 
+### 更新 hpd
+
+```bash
+hpd update
+hpd upgrade
+```
+
+两个命令行为相同：检查 GitHub Releases 的最新正式版、下载当前平台资产、校验 SHA-256 后原地替换可执行文件。仅支持通过本项目官方安装脚本安装的预编译二进制；通过 Cargo、Homebrew 或源码构建安装时，请使用原安装方式更新。
+
 ## 常用选项
 
 大多数下载命令都支持这些选项：

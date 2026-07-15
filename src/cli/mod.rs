@@ -41,6 +41,9 @@ pub enum Command {
     Config(ConfigCommand),
     /// 按当前批量布局整理已有下载目录
     Organize(OrganizeCommand),
+    /// 更新到最新正式版
+    #[command(visible_alias = "upgrade")]
+    Update,
 }
 
 #[derive(Debug, Clone, Args)]

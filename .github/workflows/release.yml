@@ -105,6 +105,7 @@ jobs:
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v3.0.1
         with:
+          make_latest: legacy
           body_path: .github/release-notes/${{ github.ref_name }}.md
           files: |
             artifacts/**/*.tar.gz

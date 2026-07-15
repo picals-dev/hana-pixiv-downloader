@@ -9,7 +9,9 @@ fn binary_help_shows_download_subcommand() {
         .assert()
         .success()
         .stdout(predicate::str::contains("download"))
-        .stdout(predicate::str::contains("organize"));
+        .stdout(predicate::str::contains("organize"))
+        .stdout(predicate::str::contains("update"))
+        .stdout(predicate::str::contains("upgrade"));
 }
 
 #[test]

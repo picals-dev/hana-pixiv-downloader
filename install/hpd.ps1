@@ -202,6 +202,7 @@ try {
 
     $null = New-Item -ItemType Directory -Force -Path $resolvedInstallDir
     Copy-Item -Path $binaryPath -Destination (Join-Path $resolvedInstallDir "hpd.exe") -Force
+    Set-Content -Path (Join-Path $resolvedInstallDir ".hpd-install.json") -Value '{"schema_version":1,"method":"github-release","repository":"picals-dev/hana-pixiv-downloader"}' -NoNewline
 
     if (Test-PathEntry -PathValue $env:Path -Entry $resolvedInstallDir) {
         $pathResult = "当前会话 PATH 已包含安装目录，无需修改。"

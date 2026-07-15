@@ -168,8 +168,10 @@ jobs:
           fi
           HPD_DIST_BASE_URL="http://127.0.0.1:8765" bash install/hpd.sh --version vtest --install-dir "$fixed_dir" --no-modify-path
           "$fixed_dir/hpd" --help >/dev/null
+          test -f "$fixed_dir/.hpd-install.json"
           HPD_DIST_BASE_URL="http://127.0.0.1:8765" bash install/hpd.sh --install-dir "$latest_dir" --no-modify-path
           "$latest_dir/hpd" --help >/dev/null
+          test -f "$latest_dir/.hpd-install.json"
 
       - name: 运行 Windows 安装 smoke test
         if: runner.os == 'Windows'
@@ -195,8 +197,14 @@ jobs:
             }
             powershell -File install/hpd.ps1 -Version vtest -InstallDir $fixedDir -NoModifyPath -BaseUrl "http://127.0.0.1:8765"
             & (Join-Path $fixedDir "hpd.exe") --help | Out-Null
+            if (-not (Test-Path (Join-Path $fixedDir ".hpd-install.json"))) {
+              throw "安装器未写入更新管理标记。"
+            }
             powershell -File install/hpd.ps1 -InstallDir $latestDir -NoModifyPath -BaseUrl "http://127.0.0.1:8765"
             & (Join-Path $latestDir "hpd.exe") --help | Out-Null
+            if (-not (Test-Path (Join-Path $latestDir ".hpd-install.json"))) {
+              throw "安装器未写入更新管理标记。"
+            }
           } finally {
             if ($server -and -not $server.HasExited) {
               Stop-Process -Id $server.Id -Force

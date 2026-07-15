@@ -269,6 +269,7 @@ binary_path="${tmpdir}/hpd"
 
 cp "$binary_path" "${install_dir}/hpd"
 chmod +x "${install_dir}/hpd"
+printf '%s\n' '{"schema_version":1,"method":"github-release","repository":"picals-dev/hana-pixiv-downloader"}' >"${install_dir}/.hpd-install.json"
 
 path_result=""
 if path_contains_dir "$install_dir"; then

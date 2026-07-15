@@ -1,6 +1,6 @@
 [package]
 name = "hana-pixiv-downloader"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 rust-version = "1.85"
 description = "开箱即用的 Pixiv 图片下载 CLI 工具"
@@ -46,10 +46,14 @@ futures = { version = "0.3", default-features = false, features = ["std", "async
 gif = "0.14"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
+semver = "1"
+sha2 = "0.10"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tar = "0.4"
+tempfile = "3"
 
 [dev-dependencies]
 wiremock = "0.6"
-tempfile = "3"
 tokio-test = "0.4"
 assert_cmd = "2"
 predicates = "3"

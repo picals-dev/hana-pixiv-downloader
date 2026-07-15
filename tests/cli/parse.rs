@@ -91,3 +91,11 @@ fn retry_cli_accepts_manifest_path() {
         _ => panic!("expected retry command"),
     }
 }
+
+#[test]
+fn update_and_upgrade_parse_to_the_same_command() {
+    for command in ["update", "upgrade"] {
+        let cli = Cli::parse_from(["hpd", command]);
+        assert!(matches!(cli.command, Command::Update));
+    }
+}
