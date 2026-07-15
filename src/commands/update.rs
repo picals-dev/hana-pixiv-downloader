@@ -88,6 +88,7 @@ pub(crate) async fn run() -> AppResult<()> {
     verify_digest(&archive, &expected_digest)?;
 
     match stage_and_replace(&executable, asset_name, &archive)? {
+        #[cfg(not(windows))]
         UpdateResult::Applied => {
             println!("已更新到 v{latest_version}。可运行 hpd --version 确认。")
         }
