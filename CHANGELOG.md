@@ -100,6 +100,17 @@
 - 官方安装脚本会写入安装管理标记，使预编译二进制可安全原地更新
 - Unix 更新后会自检并在失败时恢复原版本；Windows 在进程退出后完成替换
 
+## [0.2.0] - 2026-07-26
+
+### Added
+
+- 新增 Android Termux ARM64 预编译二进制与官方安装支持
+
+### Distribution
+
+- GitHub Releases 新增 `aarch64-linux-android` 产物，适用于 Android Bionic 环境
+- `hpd update` 可在官方安装的 Android Termux ARM64 版本中下载对应更新包
+
 ## [0.1.6] - 2026-07-15
 
 ### Fixed
