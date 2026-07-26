@@ -41,6 +41,10 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive_name: hana-pixiv-downloader-x86_64-unknown-linux-gnu.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-linux-android
+            archive_name: hana-pixiv-downloader-aarch64-linux-android.tar.gz
+            android_ndk: true
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             archive_name: hana-pixiv-downloader-x86_64-pc-windows-msvc.zip
@@ -54,6 +58,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: 安装 Android SDK
+        if: matrix.android_ndk
+        uses: android-actions/setup-android@v3
+
+      - name: 安装 Android NDK
+        if: matrix.android_ndk
+        run: sdkmanager "ndk;27.2.12479018"
+
       - name: 缓存 Cargo
         uses: Swatinem/rust-cache@v2.9.1
 
@@ -61,7 +73,16 @@ jobs:
         run: cargo test --locked --all-targets
 
       - name: 构建发布二进制
-        run: cargo build --locked --release --target ${{ matrix.target }}
+        run: |
+          if [[ "${{ matrix.target }}" == "aarch64-linux-android" ]]; then
+            android_toolchain="${ANDROID_HOME}/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64"
+            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${android_toolchain}/bin/aarch64-linux-android21-clang"
+            export CC_aarch64_linux_android="${android_toolchain}/bin/aarch64-linux-android21-clang"
+          fi
+          cargo build --locked --release --target ${{ matrix.target }}
+          if [[ "${{ matrix.target }}" == "aarch64-linux-android" ]]; then
+            "${android_toolchain}/bin/llvm-readelf" -l "target/${{ matrix.target }}/release/hpd" | grep -F '/system/bin/linker64'
+          fi
 
       - name: 打包 Unix 产物
         if: runner.os != 'Windows'

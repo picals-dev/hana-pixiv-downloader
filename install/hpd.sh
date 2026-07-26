@@ -81,6 +81,10 @@ to_lower() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
+is_android() {
+  [[ "$(uname -o 2>/dev/null || true)" == "Android" ]] || [[ "${PREFIX:-}" == "/data/data/com.termux/files/usr" ]]
+}
+
 resolve_asset_name() {
   local os arch
   os="$(uname -s)"
@@ -93,8 +97,15 @@ resolve_asset_name() {
     Linux:x86_64)
       printf 'hana-pixiv-downloader-x86_64-unknown-linux-gnu.tar.gz\n'
       ;;
+    Linux:aarch64)
+      if is_android; then
+        printf 'hana-pixiv-downloader-aarch64-linux-android.tar.gz\n'
+      else
+        die "当前平台暂不支持自动安装：${os} ${arch}。当前仅支持 macOS Apple Silicon、Linux x86_64 与 Android Termux ARM64。"
+      fi
+      ;;
     *)
-      die "当前平台暂不支持自动安装：${os} ${arch}。当前仅支持 macOS Apple Silicon 与 Linux x86_64。"
+      die "当前平台暂不支持自动安装：${os} ${arch}。当前仅支持 macOS Apple Silicon、Linux x86_64 与 Android Termux ARM64。"
       ;;
   esac
 }

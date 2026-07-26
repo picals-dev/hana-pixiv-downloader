@@ -10,6 +10,12 @@ macOS / Linux：
 curl -fsSL https://raw.githubusercontent.com/picals-dev/hana-pixiv-downloader/master/install/hpd.sh | bash
 ```
 
+Android Termux（ARM64）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/picals-dev/hana-pixiv-downloader/master/install/hpd.sh | HPD_INSTALL_DIR="$PREFIX/bin" bash
+```
+
 Windows PowerShell：
 
 ```powershell

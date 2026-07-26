@@ -222,6 +222,11 @@ fn current_asset_name() -> AppResult<&'static str> {
     Ok("hana-pixiv-downloader-x86_64-unknown-linux-gnu.tar.gz")
 }
 
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+fn current_asset_name() -> AppResult<&'static str> {
+    Ok("hana-pixiv-downloader-aarch64-linux-android.tar.gz")
+}
+
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 fn current_asset_name() -> AppResult<&'static str> {
     Ok("hana-pixiv-downloader-x86_64-pc-windows-msvc.zip")
@@ -230,7 +235,8 @@ fn current_asset_name() -> AppResult<&'static str> {
 #[cfg(not(any(
     all(target_os = "macos", target_arch = "aarch64"),
     all(target_os = "linux", target_arch = "x86_64"),
-    all(target_os = "windows", target_arch = "x86_64")
+    all(target_os = "android", target_arch = "aarch64"),
+    all(target_os = "windows", target_arch = "x86_64"),
 )))]
 fn current_asset_name() -> AppResult<&'static str> {
     bail!("当前平台暂不支持自动更新，请从 GitHub Releases 手动安装对应版本。")

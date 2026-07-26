@@ -2,7 +2,7 @@
 title: "Hana Pixiv Downloader 标准发布流程"
 tags: ["release", "git", "tag", "changelog", "github-actions", "ssot", "guide"]
 created: 2026-07-13T00:00:00.000Z
-updated: 2026-07-13T00:00:00.000Z
+updated: 2026-07-26T06:46:45.000Z
 sources: ["Cargo.toml", "Cargo.lock", "CHANGELOG.md", ".github/workflows/release.yml"]
 links: ["picals-crawler-测试指南.md", "hana-pixiv-downloader-重命名收口实现记录-2026-06-26.md"]
 category: convention
@@ -22,8 +22,8 @@ schemaVersion: 1
 - 版本号、Changelog 和 release notes 位于同一个发布提交中
 - 发布提交通过本地完整质量门禁
 - `master` 与版本 tag 指向同一个提交并已推送到远端
-- GitHub Actions 的 `verify`、三平台 `build` 和最终 `release` job 全部成功
-- GitHub Release 已生成 macOS、Linux、Windows 产物与 `SHA256SUMS.txt`
+- GitHub Actions 的 `verify`、四平台 `build` 和最终 `release` job 全部成功
+- GitHub Release 已生成 macOS、Linux、Android、Windows 产物与 `SHA256SUMS.txt`
 - 本地工作树干净，远端 `master` / tag 与本地提交一致
 
 只完成 commit、只推送 tag，或 workflow 仍在运行，都不能宣称发布完成。
@@ -163,12 +163,13 @@ tag push 会触发 `.github/workflows/release.yml`。标准 job 顺序是：
 1. `verify`
    - `cargo test --locked --all-targets`
    - `cargo publish --dry-run --locked`
-2. 三平台 `build`
+2. 四平台 `build`
    - `aarch64-apple-darwin`
    - `x86_64-unknown-linux-gnu`
    - `x86_64-pc-windows-msvc`
+   - `aarch64-linux-android`（Android Termux ARM64）
 3. `release`
-   - 下载三平台产物
+   - 下载四平台产物
    - 生成 `SHA256SUMS.txt`
    - 使用对应 release notes 创建 GitHub Release
 
@@ -184,6 +185,7 @@ gh release view vX.Y.Z --repo picals-dev/hana-pixiv-downloader
 
 - `hana-pixiv-downloader-aarch64-apple-darwin.tar.gz`
 - `hana-pixiv-downloader-x86_64-unknown-linux-gnu.tar.gz`
+- `hana-pixiv-downloader-aarch64-linux-android.tar.gz`
 - `hana-pixiv-downloader-x86_64-pc-windows-msvc.zip`
 - `SHA256SUMS.txt`
 
@@ -221,10 +223,9 @@ cargo publish --dry-run --locked
 - [ ] 先推 `master`，再推 tag
 - [ ] 远端 `master` 与 tag SHA 一致
 - [ ] GitHub Actions 全部成功
-- [ ] GitHub Release 与四个资产可见
+- [ ] GitHub Release 与五个资产可见
 - [ ] 本地工作树干净
 
 ## 11. 已验证基线
 
 `v0.1.4` 发布完整走通了本文流程：本地门禁、干净包验证、轻量 tag、分支与 tag 顺序推送、三平台构建、SHA256 生成和 GitHub Release 创建均成功。后续流程变更必须同步更新本文与 `.github/workflows/release.yml`，避免文档与自动化分叉。
-

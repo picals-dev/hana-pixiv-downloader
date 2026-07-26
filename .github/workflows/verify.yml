@@ -65,6 +65,13 @@ jobs:
             archive_kind: tar
             binary_name: hpd
             temp_install_dir: hpd-bin
+          - name: android-termux
+            os: ubuntu-latest
+            asset_name: hana-pixiv-downloader-aarch64-linux-android.tar.gz
+            archive_kind: tar
+            binary_name: hpd
+            temp_install_dir: hpd-bin
+            mock_android: true
           - name: windows
             os: windows-latest
             asset_name: hana-pixiv-downloader-x86_64-pc-windows-msvc.zip
@@ -165,6 +172,21 @@ jobs:
           if [[ "$ready" -ne 1 ]]; then
             cat /tmp/hpd-install-server.log
             exit 1
+          fi
+          if [[ "${{ matrix.mock_android }}" == "true" ]]; then
+            mock_bin="$RUNNER_TEMP/hpd-android-uname"
+            mkdir -p "$mock_bin"
+            cat >"$mock_bin/uname" <<'EOF'
+          #!/usr/bin/env bash
+          case "$1" in
+            -s) printf 'Linux\n' ;;
+            -m) printf 'aarch64\n' ;;
+            -o) printf 'Android\n' ;;
+            *) /usr/bin/uname "$@" ;;
+          esac
+          EOF
+            chmod +x "$mock_bin/uname"
+            export PATH="$mock_bin:$PATH"
           fi
           HPD_DIST_BASE_URL="http://127.0.0.1:8765" bash install/hpd.sh --version vtest --install-dir "$fixed_dir" --no-modify-path
           "$fixed_dir/hpd" --help >/dev/null
