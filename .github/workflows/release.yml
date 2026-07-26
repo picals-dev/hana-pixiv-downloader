@@ -72,18 +72,20 @@ jobs:
       - name: 运行测试
         run: cargo test --locked --all-targets
 
-      - name: 构建发布二进制
+      - name: 构建非 Android 发布二进制
+        if: matrix.target != 'aarch64-linux-android'
+        run: cargo build --locked --release --target ${{ matrix.target }}
+
+      - name: 构建 Android 发布二进制
+        if: matrix.target == 'aarch64-linux-android'
+        shell: bash
         run: |
-          if [[ "${{ matrix.target }}" == "aarch64-linux-android" ]]; then
-            android_toolchain="${ANDROID_HOME}/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64"
-            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${android_toolchain}/bin/aarch64-linux-android21-clang"
-            export CC_aarch64_linux_android="${android_toolchain}/bin/aarch64-linux-android21-clang"
-            export AR_aarch64_linux_android="${android_toolchain}/bin/llvm-ar"
-          fi
+          android_toolchain="${ANDROID_HOME}/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${android_toolchain}/bin/aarch64-linux-android21-clang"
+          export CC_aarch64_linux_android="${android_toolchain}/bin/aarch64-linux-android21-clang"
+          export AR_aarch64_linux_android="${android_toolchain}/bin/llvm-ar"
           cargo build --locked --release --target ${{ matrix.target }}
-          if [[ "${{ matrix.target }}" == "aarch64-linux-android" ]]; then
-            "${android_toolchain}/bin/llvm-readelf" -l "target/${{ matrix.target }}/release/hpd" | grep -F '/system/bin/linker64'
-          fi
+          "${android_toolchain}/bin/llvm-readelf" -l "target/${{ matrix.target }}/release/hpd" | grep -F '/system/bin/linker64'
 
       - name: 打包 Unix 产物
         if: runner.os != 'Windows'
