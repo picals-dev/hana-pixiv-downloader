@@ -12,6 +12,7 @@ mod organize;
 mod prompt_support;
 mod retry_cmd;
 mod setup;
+mod uninstall;
 mod update;
 
 use crate::{
@@ -38,5 +39,6 @@ pub async fn dispatch(cli: Cli) -> AppResult<()> {
         },
         Command::Organize(args) => organize::run(args).await,
         Command::Update => update::run().await,
+        Command::Uninstall(args) => uninstall::run(args).await,
     }
 }

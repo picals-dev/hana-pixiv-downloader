@@ -111,6 +111,18 @@ hpd retry /path/to/failures.toml
 
 当批量下载里仍有可重试失败项时，工具会生成 manifest，后续如果想要再重试可直接凭此 `retry`。
 
+### 卸载 hpd
+
+```bash
+# 删除可执行文件、配置和认证信息；保留下载内容
+hpd uninstall --yes
+
+# 连同配置中记录的下载目录一并删除
+hpd uninstall --yes --purge-downloads
+```
+
+卸载命令会要求 `--yes` 显式确认。`--purge-downloads` 会递归删除 `config.toml` 中配置的五个下载根目录；请只在确认这些目录全部由 hpd 管理时使用。
+
 ### 更新 hpd
 
 ```bash

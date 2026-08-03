@@ -15,5 +15,7 @@ mod parse;
 mod retry;
 #[path = "cli/ugoira.rs"]
 mod ugoira;
+#[path = "cli/uninstall.rs"]
+mod uninstall;
 #[path = "cli/verbose.rs"]
 mod verbose;

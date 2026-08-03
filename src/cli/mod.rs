@@ -3,10 +3,14 @@
 pub mod config;
 pub mod download;
 pub mod organize;
+pub mod uninstall;
 
 use clap::{Args, Parser, Subcommand};
 
-use self::{config::ConfigCommand, download::DownloadCommand, organize::OrganizeCommand};
+use self::{
+    config::ConfigCommand, download::DownloadCommand, organize::OrganizeCommand,
+    uninstall::UninstallCommand,
+};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -44,6 +48,8 @@ pub enum Command {
     /// 更新到最新正式版
     #[command(visible_alias = "upgrade")]
     Update,
+    /// 从设备移除 hpd 的可执行文件与本地配置
+    Uninstall(UninstallCommand),
 }
 
 #[derive(Debug, Clone, Args)]
