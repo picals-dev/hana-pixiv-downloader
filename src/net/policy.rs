@@ -22,7 +22,7 @@ pub(crate) fn policy_for(kind: RequestKind) -> RequestPolicy {
             timeout: Duration::from_secs(90),
             base_delay: Duration::from_millis(300),
             max_delay: Duration::from_secs(8),
-            default_cooldown: Duration::from_secs(5),
+            default_cooldown: Duration::from_secs(20),
         },
         RequestKind::Homepage
         | RequestKind::UserProfile
@@ -35,7 +35,7 @@ pub(crate) fn policy_for(kind: RequestKind) -> RequestPolicy {
             timeout: Duration::from_secs(30),
             base_delay: Duration::from_millis(200),
             max_delay: Duration::from_secs(5),
-            default_cooldown: Duration::from_secs(3),
+            default_cooldown: Duration::from_secs(30),
         },
     }
 }

@@ -1,6 +1,7 @@
 //! Pixiv 共享网络会话 façade。
 
 use std::{
+    collections::HashMap,
     env,
     future::Future,
     path::Path,
@@ -25,12 +26,13 @@ use crate::{
 };
 
 use super::{
-    NetEvent, SessionObserver,
+    HostKind, NetEvent, SessionObserver,
     catalog::{
         CurrentUserPage, PixivCatalog, RequestSpec, extract_header_user_id, extract_json_body,
     },
     client::NetClients,
-    policy::{retry_delay_for_error, retry_delay_for_status},
+    policy::{parse_retry_after, policy_for, retry_delay_for_error, retry_delay_for_status},
+    rate::{RateBuckets, RateLimitParams},
     state::SharedState,
     transfer::{
         TransferChunkObserver, ensure_file_exists_and_nonempty, stream_response_to_temp_file,
@@ -52,6 +54,7 @@ pub struct PixivNetSession {
     catalog: PixivCatalog,
     clients: NetClients,
     state: Arc<SharedState>,
+    rate: Arc<RateBuckets>,
     hooks: RuntimeHooks,
 }
 
@@ -77,6 +80,8 @@ struct RuntimeHooks {
     now: NowFn,
     sleep: SleepFn,
     observer: Option<SessionObserver>,
+    /// 测试专用：按 host 覆盖令牌桶参数（生产为空，使用默认限速）。
+    rate_overrides: HashMap<HostKind, RateLimitParams>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -94,6 +99,7 @@ enum AttemptOutcome<T> {
         delay: Duration,
         reason: String,
         cooldown: bool,
+        retry_after: Option<Duration>,
     },
     Fail(eyre::Report),
 }
@@ -104,6 +110,7 @@ impl Default for RuntimeHooks {
             now: Arc::new(SystemTime::now),
             sleep: Arc::new(|duration| Box::pin(tokio::time::sleep(duration))),
             observer: None,
+            rate_overrides: HashMap::new(),
         }
     }
 }
@@ -153,6 +160,7 @@ impl PixivNetSession {
             catalog: PixivCatalog::new(base_url)?,
             clients: NetClients::new(&options, &credential)?,
             state: Arc::new(SharedState::default()),
+            rate: Arc::new(RateBuckets::new(&hooks.rate_overrides)),
             hooks,
         })
     }
@@ -343,6 +351,7 @@ impl PixivNetSession {
             };
 
             self.enforce_cooldown(context.host).await;
+            self.rate.acquire(context.host).await;
             self.emit_attempt(&context);
 
             match self.run_single_attempt(&context, &spec, &parser).await {
@@ -351,8 +360,10 @@ impl PixivNetSession {
                     delay,
                     reason,
                     cooldown,
+                    retry_after,
                 } => {
-                    self.handle_retry(&context, delay, reason, cooldown).await;
+                    self.handle_retry(&context, delay, reason, cooldown, retry_after)
+                        .await;
                     continue;
                 }
                 AttemptOutcome::Fail(error) => {
@@ -408,18 +419,21 @@ impl PixivNetSession {
         }
 
         let headers = response.headers().clone();
+        let now = (self.hooks.now)();
+        let retry_after = parse_retry_after(&headers, now);
         if let Some(delay) = retry_delay_for_status(
             context.kind,
             context.attempt - 1,
             self.attempt_limit,
             status,
             &headers,
-            (self.hooks.now)(),
+            now,
         ) {
             return AttemptOutcome::Retry {
                 delay,
                 reason: format!("HTTP {}", status.as_u16()),
                 cooldown: super::is_cooldown_status(status),
+                retry_after,
             };
         }
 
@@ -452,6 +466,7 @@ impl PixivNetSession {
                 delay,
                 reason: error.to_string(),
                 cooldown: false,
+                retry_after: None,
             };
         }
 
@@ -464,15 +479,22 @@ impl PixivNetSession {
         delay: Duration,
         reason: String,
         cooldown: bool,
+        retry_after: Option<Duration>,
     ) {
-        if cooldown {
+        let effective_delay = if cooldown {
+            let base = policy_for(context.kind).default_cooldown;
             self.state
-                .extend_cooldown(context.host, (self.hooks.now)(), delay)
-                .await;
+                .enter_429_cooldown(context.host, (self.hooks.now)(), retry_after, base)
+                .await
+        } else {
+            delay
+        };
+
+        if cooldown {
             self.emit(NetEvent::Cooldown {
                 session_id: context.session_id,
                 host: context.host,
-                delay,
+                delay: effective_delay,
             });
         }
 
@@ -481,10 +503,10 @@ impl PixivNetSession {
             host: context.host,
             kind: context.kind,
             attempt: context.attempt,
-            delay,
+            delay: effective_delay,
             reason,
         });
-        (self.hooks.sleep)(delay).await;
+        (self.hooks.sleep)(effective_delay).await;
     }
 
     fn emit_attempt(&self, context: &AttemptContext<'_>) {
@@ -599,7 +621,7 @@ mod tests {
         auth::Credential,
         config::{DownloadConfig, DownloadMode, ResolvedDownloadOptions, SortOrder},
         failure::{FailureManifest, FailureRecord, FailureStage, ReplayCommand, ReplayOptions},
-        net::{HostKind, NetEvent},
+        net::{HostKind, NetEvent, rate::RateLimitParams},
     };
     use url::Url;
 
@@ -673,6 +695,7 @@ mod tests {
                 observer: Some(Arc::new(move |event| {
                     events.lock().unwrap().push(event);
                 })),
+                rate_overrides: std::collections::HashMap::new(),
             }
         }
     }
@@ -1005,5 +1028,126 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[tokio::test]
+    async fn session_429_without_retry_after_escalates_cooldown() {
+        let server = MockServer::start().await;
+        let clock = ManualClock::new(SystemTime::UNIX_EPOCH);
+        let session = PixivNetSession::new_with_hooks(
+            options(5, 3),
+            Credential::new("cookie").unwrap(),
+            server.uri().parse().unwrap(),
+            clock.hooks(),
+        )
+        .unwrap();
+
+        Mock::given(method("GET"))
+            .and(path("/ajax/illust/123456/pages"))
+            .respond_with(ResponseTemplate::new(429))
+            .up_to_n_times(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ajax/illust/123456/pages"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"error": false, "body": []})),
+            )
+            .mount(&server)
+            .await;
+
+        session.fetch_illust_pages("123456").await.unwrap();
+
+        // 连续无 Retry-After 的 429：第一次按基数冷却 30s，冷却过后仍 429 → 升级为 60s。
+        assert_eq!(
+            *clock.sleeps.lock().unwrap(),
+            vec![Duration::from_secs(30), Duration::from_secs(60)]
+        );
+        assert!(clock.events.lock().unwrap().iter().any(|event| matches!(
+            event,
+            NetEvent::Cooldown {
+                host: HostKind::Metadata,
+                ..
+            }
+        )));
+    }
+
+    #[tokio::test]
+    async fn concurrent_requests_are_paced_by_rate_limiter() {
+        let recorded = Arc::new(Mutex::new(Vec::new()));
+        let recorded_inner = Arc::clone(&recorded);
+        let (base_url, server) = spawn_timed_json_server(2, recorded_inner);
+
+        let clock = ManualClock::new(SystemTime::UNIX_EPOCH);
+        let mut hooks = clock.hooks();
+        hooks.rate_overrides.insert(
+            HostKind::Metadata,
+            RateLimitParams {
+                capacity: 1.0,
+                per_second: 100.0,
+            },
+        );
+        let session = PixivNetSession::new_with_hooks(
+            options(5, 1),
+            Credential::new("cookie").unwrap(),
+            base_url,
+            hooks,
+        )
+        .unwrap();
+
+        let first = session.clone();
+        let second = session.clone();
+        let handle_a =
+            tokio::spawn(async move { first.fetch_illust_pages("123456").await.unwrap() });
+        let handle_b =
+            tokio::spawn(async move { second.fetch_illust_pages("123456").await.unwrap() });
+        let (_, _) = tokio::join!(handle_a, handle_b);
+        server.join().unwrap();
+
+        let arrivals = recorded.lock().unwrap();
+        assert_eq!(arrivals.len(), 2);
+        let gap = arrivals[1].duration_since(arrivals[0]);
+        assert!(
+            gap >= Duration::from_millis(5),
+            "并发请求应被令牌桶错峰，实际间隔 {gap:?}"
+        );
+    }
+
+    /// 按到达顺序记录每个请求的到达时刻，并回固定 JSON 的原始 HTTP 服务器。
+    fn spawn_timed_json_server(
+        count: usize,
+        recorded: Arc<Mutex<Vec<std::time::Instant>>>,
+    ) -> (Url, JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let handle = thread::spawn(move || {
+            let body = br#"{"error": false, "body": []}"#;
+            for _ in 0..count {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut raw = Vec::new();
+                let mut buffer = [0u8; 1024];
+                loop {
+                    let read = stream.read(&mut buffer).unwrap();
+                    if read == 0 {
+                        break;
+                    }
+                    raw.extend_from_slice(&buffer[..read]);
+                    if raw.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                recorded.lock().unwrap().push(std::time::Instant::now());
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
+                .unwrap();
+                stream.write_all(body).unwrap();
+                stream.flush().unwrap();
+            }
+        });
+
+        (Url::parse(&format!("http://{address}")).unwrap(), handle)
     }
 }

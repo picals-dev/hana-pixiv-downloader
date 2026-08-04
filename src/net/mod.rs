@@ -4,6 +4,7 @@ mod catalog;
 mod client;
 mod event;
 mod policy;
+mod rate;
 mod session;
 mod state;
 pub(crate) mod test_hook;
