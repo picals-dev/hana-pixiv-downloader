@@ -4,3 +4,6 @@
 [submodule "repos/hana-music-api"]
 	path = repos/hana-music-api
 	url = git@github.com:nonhana/hana-music-api.git
+[submodule "repos/pixiv-ajax-api-docs"]
+	path = repos/pixiv-ajax-api-docs
+	url = git@github.com:daydreamer-json/pixiv-ajax-api-docs.git
