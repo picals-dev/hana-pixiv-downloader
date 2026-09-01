@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0] - 2026-09-01
+
+### Added
+
+- 新增 `download series` 子命令与裸 URL 自动识别：直接粘贴 Pixiv 插画/漫画系列页面 URL（`/user/{uid}/series/{sid}`、`/users/{uid}/series/{sid}`）或纯数字系列 ID，即可下载整个系列
+- 系列按话数顺序下载：默认从最新一话开始，`--sort date_asc` 从第 1 话开始；`--count N` 按话数截断，`--dry-run` 显示系列总话数
+- setup 向导与配置新增系列下载根目录（`series`），产物按 `series_{系列ID}` 目录组织
+- 失败清单 manifest 与 `retry` 回放支持系列下载
+
+### Fixed
+
+- 修复直接粘贴 `users/{uid}/series/{sid}` 形式 URL 被误判为画师下载的问题
+
 ## [0.2.3] - 2026-08-04
 
 ### Fixed
