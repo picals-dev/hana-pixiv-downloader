@@ -31,7 +31,8 @@ pub(crate) fn policy_for(kind: RequestKind) -> RequestPolicy {
         | RequestKind::UgoiraMeta
         | RequestKind::KeywordSearch
         | RequestKind::Ranking
-        | RequestKind::Bookmark => RequestPolicy {
+        | RequestKind::Bookmark
+        | RequestKind::Series => RequestPolicy {
             timeout: Duration::from_secs(30),
             base_delay: Duration::from_millis(200),
             max_delay: Duration::from_secs(5),
@@ -143,6 +144,7 @@ fn stable_kind_seed(kind: RequestKind) -> u64 {
         RequestKind::Bookmark => 8,
         RequestKind::ImageDownload => 9,
         RequestKind::UgoiraDownload => 10,
+        RequestKind::Series => 11,
     }
 }
 

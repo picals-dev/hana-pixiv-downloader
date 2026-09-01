@@ -84,6 +84,7 @@ mod tests {
             bookmark: "/tmp/bookmark".to_string(),
             keyword: "/tmp/keyword".to_string(),
             ranking: "/tmp/ranking".to_string(),
+            series: "/tmp/series".to_string(),
         };
         config.proxy.url = "socks5://127.0.0.1:1080".to_string();
 

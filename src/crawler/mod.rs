@@ -4,6 +4,7 @@ pub mod bookmark;
 pub mod illust;
 pub mod keyword;
 pub mod ranking;
+pub mod series;
 pub(crate) mod shared;
 pub mod user;
 

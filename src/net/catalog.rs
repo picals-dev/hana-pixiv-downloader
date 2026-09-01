@@ -34,6 +34,7 @@ pub enum RequestKind {
     KeywordSearch,
     Ranking,
     Bookmark,
+    Series,
     ImageDownload,
     UgoiraDownload,
 }
@@ -49,6 +50,7 @@ impl RequestKind {
             Self::KeywordSearch => "keyword_search",
             Self::Ranking => "ranking",
             Self::Bookmark => "bookmark",
+            Self::Series => "series",
             Self::ImageDownload => "image_download",
             Self::UgoiraDownload => "ugoira_download",
         }
@@ -64,7 +66,8 @@ impl RequestKind {
             | Self::UgoiraMeta
             | Self::KeywordSearch
             | Self::Ranking
-            | Self::Bookmark => HostKind::Metadata,
+            | Self::Bookmark
+            | Self::Series => HostKind::Metadata,
         }
     }
 }
@@ -180,6 +183,21 @@ impl PixivCatalog {
                 "/ajax/user/{user_id}/illusts/bookmarks?tag=&offset={offset}&limit={limit}&rest=show&lang=zh"
             ),
             Some("/bookmark.php?type=user"),
+        )
+    }
+
+    /// 系列分页请求：`p` 从 1 开始，每页 12 话，空页表示翻完了。
+    pub(crate) fn series_page(
+        &self,
+        series_id: &str,
+        user_id: Option<&str>,
+        page: usize,
+    ) -> AppResult<RequestSpec> {
+        let referer = user_id.map(|user_id| format!("/user/{user_id}/series/{series_id}"));
+        self.metadata_request(
+            RequestKind::Series,
+            &format!("/ajax/series/{series_id}?p={page}"),
+            referer.as_deref(),
         )
     }
 

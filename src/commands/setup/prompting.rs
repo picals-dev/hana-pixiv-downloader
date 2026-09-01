@@ -197,15 +197,15 @@ fn prompt_download_roots(current: &DownloadRootsConfig) -> AppResult<DownloadRoo
     let root_input = prompt_optional_text(
         "统一下载根目录",
         if current_root.is_some() {
-            "直接回车保持当前统一 root；若修改，会自动更新下面五个目录的默认值"
+            "直接回车保持当前统一 root；若修改，会自动更新下面六个目录的默认值"
         } else {
-            "留空表示保留当前五个目录不变；填写后会自动派生下面五个目录的默认值"
+            "留空表示保留当前六个目录不变；填写后会自动派生下面六个目录的默认值"
         },
         current_root.as_deref().unwrap_or_default(),
     )?;
     let defaults = derive_setup_download_roots(current, &root_input);
 
-    println!("下面开始确认五种下载模式对应的根目录。");
+    println!("下面开始确认六种下载模式对应的根目录。");
 
     Ok(DownloadRootsConfig {
         illust: prompt_text(
@@ -233,6 +233,11 @@ fn prompt_download_roots(current: &DownloadRootsConfig) -> AppResult<DownloadRoo
             "用于 download ranking 的根目录；最终会追加 mode，再按 batch_layout 决定作品是否建目录",
             &defaults.ranking,
         )?,
+        series: prompt_text(
+            "系列下载根目录（series）",
+            "用于 download series 的根目录；最终会追加 series_{系列ID} 目录，再按 batch_layout 决定作品是否建目录",
+            &defaults.series,
+        )?,
     })
 }
 
@@ -242,8 +247,14 @@ fn infer_download_root_seed(current: &DownloadRootsConfig) -> Option<String> {
     let bookmark = strip_mode_suffix(&current.bookmark, "bookmark")?;
     let keyword = strip_mode_suffix(&current.keyword, "keyword")?;
     let ranking = strip_mode_suffix(&current.ranking, "ranking")?;
+    let series = strip_mode_suffix(&current.series, "series")?;
 
-    if illust == user && user == bookmark && bookmark == keyword && keyword == ranking {
+    if illust == user
+        && user == bookmark
+        && bookmark == keyword
+        && keyword == ranking
+        && ranking == series
+    {
         Some(illust)
     } else {
         None
@@ -375,6 +386,7 @@ mod tests {
             bookmark: "~/Pictures/Pixiv/bookmark".to_string(),
             keyword: "~/Pictures/Pixiv/keyword".to_string(),
             ranking: "~/Pictures/Pixiv/ranking".to_string(),
+            series: "~/Pictures/Pixiv/series".to_string(),
         };
 
         assert_eq!(infer_download_root_seed(&roots), None);
@@ -388,6 +400,7 @@ mod tests {
             bookmark: "/tmp/custom-bookmark".to_string(),
             keyword: "/tmp/custom-keyword".to_string(),
             ranking: "/tmp/custom-ranking".to_string(),
+            series: "/tmp/custom-series".to_string(),
         };
 
         let derived = derive_setup_download_roots(&current, "/data/pixiv");
@@ -406,6 +419,7 @@ mod tests {
             bookmark: "/tmp/custom-bookmark".to_string(),
             keyword: "/tmp/custom-keyword".to_string(),
             ranking: "/tmp/custom-ranking".to_string(),
+            series: "/tmp/custom-series".to_string(),
         };
 
         let derived = derive_setup_download_roots(&current, "   ");

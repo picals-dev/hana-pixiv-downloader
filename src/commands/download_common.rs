@@ -305,6 +305,10 @@ pub(crate) fn confirm_bulk_plan(
 pub(crate) fn render_order_label(mode: DownloadMode, sort: SortOrder) -> String {
     match mode {
         DownloadMode::Ranking => "按 Pixiv 榜单顺序".to_string(),
+        DownloadMode::Series => match sort {
+            SortOrder::DateDesc => "按系列序号从新到旧".to_string(),
+            SortOrder::DateAsc => "按系列序号从旧到新".to_string(),
+        },
         _ => match sort {
             SortOrder::DateDesc => "按发布时间从新到旧".to_string(),
             SortOrder::DateAsc => "按发布时间从旧到新".to_string(),
@@ -462,6 +466,10 @@ pub(crate) fn build_replay_command(
         },
         DownloadMode::Ranking => ReplayCommand::Ranking {
             mode: subject.to_string(),
+            options: replay_options,
+        },
+        DownloadMode::Series => ReplayCommand::Series {
+            series_id: subject.to_string(),
             options: replay_options,
         },
     }

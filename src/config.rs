@@ -29,6 +29,7 @@ pub enum DownloadMode {
     Bookmark,
     Keyword,
     Ranking,
+    Series,
 }
 
 impl DownloadMode {
@@ -63,6 +64,8 @@ pub(crate) struct DownloadRootsConfig {
     pub bookmark: String,
     pub keyword: String,
     pub ranking: String,
+    #[serde(default)]
+    pub series: String,
 }
 
 impl Default for DownloadRootsConfig {
@@ -80,6 +83,7 @@ impl DownloadRootsConfig {
             bookmark: join_root_seed(seed, "bookmark"),
             keyword: join_root_seed(seed, "keyword"),
             ranking: join_root_seed(seed, "ranking"),
+            series: join_root_seed(seed, "series"),
         }
     }
 
@@ -90,6 +94,7 @@ impl DownloadRootsConfig {
             DownloadMode::Bookmark => &self.bookmark,
             DownloadMode::Keyword => &self.keyword,
             DownloadMode::Ranking => &self.ranking,
+            DownloadMode::Series => &self.series,
         }
     }
 }
@@ -228,6 +233,8 @@ struct RawDownloadRootsConfig {
     keyword: Option<String>,
     #[serde(default)]
     ranking: Option<String>,
+    #[serde(default)]
+    series: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -244,6 +251,7 @@ impl RawDownloadRootsConfig {
             bookmark: self.bookmark.unwrap_or_else(|| defaults.bookmark.clone()),
             keyword: self.keyword.unwrap_or_else(|| defaults.keyword.clone()),
             ranking: self.ranking.unwrap_or_else(|| defaults.ranking.clone()),
+            series: self.series.unwrap_or_else(|| defaults.series.clone()),
         }
     }
 }
@@ -378,6 +386,7 @@ impl Config {
         validate_non_empty_path("download.roots.bookmark", &self.download.roots.bookmark)?;
         validate_non_empty_path("download.roots.keyword", &self.download.roots.keyword)?;
         validate_non_empty_path("download.roots.ranking", &self.download.roots.ranking)?;
+        validate_non_empty_path("download.roots.series", &self.download.roots.series)?;
         Ok(())
     }
 }

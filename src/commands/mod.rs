@@ -7,6 +7,7 @@ mod download_direct;
 mod download_illust;
 mod download_keyword;
 mod download_ranking;
+mod download_series;
 mod download_user;
 mod organize;
 mod prompt_support;
@@ -29,6 +30,7 @@ pub async fn dispatch(cli: Cli) -> AppResult<()> {
             Some(DownloadSubcommand::Ranking(args)) => download_ranking::run(args).await,
             Some(DownloadSubcommand::Illust(args)) => download_illust::run(args).await,
             Some(DownloadSubcommand::Bookmark(args)) => download_bookmark::run(args).await,
+            Some(DownloadSubcommand::Series(args)) => download_series::run(args).await,
             None => download_direct::run(download.direct).await,
         },
         Command::Retry(args) => retry_cmd::run(args).await,

@@ -6,9 +6,19 @@ use crate::error::CrawlerError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PixivUrlTarget {
-    User { user_id: String },
-    Illust { illust_id: String },
-    Keyword { query: String },
+    User {
+        user_id: String,
+    },
+    Illust {
+        illust_id: String,
+    },
+    Keyword {
+        query: String,
+    },
+    Series {
+        user_id: Option<String>,
+        series_id: String,
+    },
 }
 
 pub(crate) fn extract_user_id(input: &str) -> Result<String, CrawlerError> {
@@ -37,6 +47,20 @@ pub(crate) fn extract_illust_id(input: &str) -> Result<String, CrawlerError> {
     }
 }
 
+/// 提取系列 ID 与可选的作者 ID：接受纯数字系列 ID 或系列页 URL。
+pub(crate) fn extract_series_id(input: &str) -> Result<(Option<String>, String), CrawlerError> {
+    if let Some(series_id) = extract_numeric_id(input) {
+        return Ok((None, series_id));
+    }
+
+    match parse_pixiv_url_target(input)? {
+        PixivUrlTarget::Series { user_id, series_id } => Ok((user_id, series_id)),
+        _ => Err(CrawlerError::InvalidInput(format!(
+            "无法识别系列 ID 或 URL: {input}"
+        ))),
+    }
+}
+
 pub(crate) fn parse_pixiv_url_target(input: &str) -> Result<PixivUrlTarget, CrawlerError> {
     let trimmed = input.trim();
     let url = Url::parse(trimmed)?;
@@ -46,6 +70,14 @@ pub(crate) fn parse_pixiv_url_target(input: &str) -> Result<PixivUrlTarget, Craw
         .collect();
 
     match segments.as_slice() {
+        ["user", user_id, "series", series_id] | ["users", user_id, "series", series_id]
+            if !user_id.is_empty() && !series_id.is_empty() =>
+        {
+            Ok(PixivUrlTarget::Series {
+                user_id: Some((*user_id).to_string()),
+                series_id: (*series_id).to_string(),
+            })
+        }
         ["users", user_id, ..] if !user_id.is_empty() => Ok(PixivUrlTarget::User {
             user_id: (*user_id).to_string(),
         }),
@@ -113,7 +145,10 @@ fn decode_hex(value: u8) -> Result<u8, CrawlerError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PixivUrlTarget, extract_illust_id, extract_user_id, parse_pixiv_url_target};
+    use super::{
+        PixivUrlTarget, extract_illust_id, extract_series_id, extract_user_id,
+        parse_pixiv_url_target,
+    };
 
     #[test]
     fn user_id_can_be_extracted_from_plain_number() {
@@ -159,5 +194,53 @@ mod tests {
         let url = "https://www.pixiv.net/novel/show.php?id=1";
         let error = parse_pixiv_url_target(url).unwrap_err();
         assert!(format!("{error:#}").contains("暂不支持从该 Pixiv URL 自动识别下载类型"));
+    }
+
+    #[test]
+    fn series_can_be_extracted_from_singular_user_url() {
+        let url = "https://www.pixiv.net/user/124115983/series/328460";
+        assert_eq!(
+            parse_pixiv_url_target(url).unwrap(),
+            PixivUrlTarget::Series {
+                user_id: Some("124115983".to_string()),
+                series_id: "328460".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn series_can_be_extracted_from_plural_users_url() {
+        let url = "https://www.pixiv.net/users/124115983/series/328460";
+        assert_eq!(
+            parse_pixiv_url_target(url).unwrap(),
+            PixivUrlTarget::Series {
+                user_id: Some("124115983".to_string()),
+                series_id: "328460".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn series_id_can_be_extracted_from_plain_number() {
+        assert_eq!(
+            extract_series_id("328460").unwrap(),
+            (None, "328460".to_string())
+        );
+    }
+
+    #[test]
+    fn series_id_can_be_extracted_from_url() {
+        let url = "https://www.pixiv.net/user/124115983/series/328460";
+        assert_eq!(
+            extract_series_id(url).unwrap(),
+            (Some("124115983".to_string()), "328460".to_string())
+        );
+    }
+
+    #[test]
+    fn series_url_is_not_treated_as_user() {
+        let url = "https://www.pixiv.net/users/124115983/series/328460";
+        let error = extract_user_id(url).unwrap_err();
+        assert!(format!("{error:#}").contains("无法识别画师 ID 或 URL"));
     }
 }

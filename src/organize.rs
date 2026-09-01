@@ -189,6 +189,10 @@ fn batch_root_paths(roots: &DownloadRootsConfig) -> AppResult<Vec<(DownloadMode,
             DownloadMode::Ranking,
             expand_home_dir(Path::new(&roots.ranking))?,
         ),
+        (
+            DownloadMode::Series,
+            expand_home_dir(Path::new(&roots.series))?,
+        ),
     ])
 }
 

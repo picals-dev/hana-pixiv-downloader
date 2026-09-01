@@ -132,6 +132,10 @@ pub(crate) fn resolve_output_layout(
         DownloadMode::Bookmark => root.join(validate_controlled_segment("userId", subject)?),
         DownloadMode::Keyword => root.join(normalize_keyword_segment(subject)),
         DownloadMode::Ranking => root.join(validate_controlled_segment("ranking mode", subject)?),
+        DownloadMode::Series => root.join(format!(
+            "series_{}",
+            validate_controlled_segment("seriesId", subject)?
+        )),
     };
 
     Ok(OutputLayout { mode, context_dir })

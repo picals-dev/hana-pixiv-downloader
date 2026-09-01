@@ -140,6 +140,97 @@ pub fn select_bookmark_total(value: &Value) -> Result<usize, CrawlerError> {
         .map_err(|_| CrawlerError::Parse(format!("收藏作品总数超出 usize 范围: {total}")))
 }
 
+/// 系列元信息：标题、作者 ID、总话数。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeriesMeta {
+    pub title: String,
+    pub user_id: String,
+    pub total: usize,
+}
+
+pub fn select_series_meta(value: &Value) -> Result<SeriesMeta, CrawlerError> {
+    let series = value
+        .pointer("/body/illustSeries/0")
+        .ok_or_else(|| CrawlerError::Parse("缺少 body.illustSeries 系列信息".to_string()))?;
+
+    let title = series
+        .get("title")
+        .and_then(Value::as_str)
+        .filter(|title| !title.trim().is_empty())
+        .ok_or_else(|| CrawlerError::Parse("系列信息缺少 title".to_string()))?;
+    let user_id = series
+        .get("userId")
+        .and_then(Value::as_str)
+        .filter(|user_id| !user_id.trim().is_empty())
+        .ok_or_else(|| CrawlerError::Parse("系列信息缺少 userId".to_string()))?;
+    let total = series
+        .get("total")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| CrawlerError::Parse("系列信息缺少 total".to_string()))?;
+
+    Ok(SeriesMeta {
+        title: title.to_string(),
+        user_id: user_id.to_string(),
+        total: usize::try_from(total)
+            .map_err(|_| CrawlerError::Parse(format!("系列总话数超出 usize 范围: {total}")))?,
+    })
+}
+
+/// 解析一页系列作品，返回 `(order, workId)` 列表；`order` 为系列内序号。
+pub fn select_series_illust_orders(value: &Value) -> Result<Vec<(u64, String)>, CrawlerError> {
+    let series = value
+        .pointer("/body/page/series")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            let actual = describe_body(value);
+            CrawlerError::Parse(format!("缺少 body.page.series 字段（实际响应: {actual}）"))
+        })?;
+
+    let mut orders = Vec::with_capacity(series.len());
+    for entry in series {
+        let work_id = entry
+            .get("workId")
+            .and_then(Value::as_str)
+            .filter(|work_id| !work_id.trim().is_empty())
+            .ok_or_else(|| CrawlerError::Parse("系列条目缺少 workId".to_string()))?;
+        let order = entry
+            .get("order")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| CrawlerError::Parse(format!("系列条目 {work_id} 缺少 order")))?;
+        orders.push((order, work_id.to_string()));
+    }
+
+    Ok(orders)
+}
+
+/// 生成响应 body 的简短描述，用于解析失败时的错误诊断。
+fn describe_body(value: &Value) -> String {
+    match value.get("body") {
+        None => "缺少 body".to_string(),
+        Some(body) => match body {
+            Value::Object(map) => {
+                let keys: Vec<&str> = map.keys().map(String::as_str).collect();
+                format!("对象，keys={keys:?}")
+            }
+            other => format!("{}，内容前 120 字节: {}", json_kind(other), {
+                let text = other.to_string();
+                text.chars().take(120).collect::<String>()
+            }),
+        },
+    }
+}
+
+fn json_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "布尔",
+        Value::Number(_) => "数字",
+        Value::String(_) => "字符串",
+        Value::Array(_) => "数组",
+        Value::Object(_) => "对象",
+    }
+}
+
 pub fn select_current_user_id(
     header_user_id: Option<&str>,
     html: &str,

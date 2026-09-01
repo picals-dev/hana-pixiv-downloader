@@ -8,7 +8,7 @@ use crate::{
 
 pub(crate) async fn run(args: DirectDownloadArgs) -> AppResult<()> {
     let pixiv_url = args.pixiv_url.as_deref().ok_or_else(|| {
-        CrawlerError::InvalidInput("请提供 Pixiv 用户、作品或标签页面 URL".to_string())
+        CrawlerError::InvalidInput("请提供 Pixiv 用户、作品、标签或系列页面 URL".to_string())
     })?;
 
     match parse_pixiv_url_target(pixiv_url)? {
@@ -33,6 +33,9 @@ pub(crate) async fn run(args: DirectDownloadArgs) -> AppResult<()> {
                 common: args.common,
             })
             .await
+        }
+        PixivUrlTarget::Series { user_id, series_id } => {
+            super::download_series::run_target(series_id, user_id, args.common).await
         }
     }
 }

@@ -170,6 +170,7 @@ mod tests {
             bookmark: previous.download.roots.bookmark.clone(),
             keyword: previous.download.roots.keyword.clone(),
             ranking: previous.download.roots.ranking.clone(),
+            series: previous.download.roots.series.clone(),
         };
 
         assert_eq!(
@@ -189,6 +190,7 @@ mod tests {
             bookmark: previous.download.roots.bookmark.clone(),
             keyword: previous.download.roots.keyword.clone(),
             ranking: previous.download.roots.ranking.clone(),
+            series: previous.download.roots.series.clone(),
         };
 
         assert_eq!(

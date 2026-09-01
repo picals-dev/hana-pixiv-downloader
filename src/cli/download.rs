@@ -28,13 +28,15 @@ pub enum DownloadSubcommand {
     Illust(IllustArgs),
     /// 下载当前账号的收藏
     Bookmark(BookmarkArgs),
+    /// 下载指定插画/漫画系列的全部作品
+    Series(SeriesArgs),
 }
 
 #[derive(Debug, Clone, Default, Args)]
 pub struct DirectDownloadArgs {
     #[arg(
         value_name = "PIXIV_URL",
-        help = "直接粘贴 Pixiv 用户、作品或标签页面 URL",
+        help = "直接粘贴 Pixiv 用户、作品、标签或系列页面 URL",
         required = true
     )]
     pub pixiv_url: Option<String>,
@@ -121,6 +123,15 @@ impl From<SortArg> for SortOrder {
             SortArg::DateAsc => SortOrder::DateAsc,
         }
     }
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct SeriesArgs {
+    #[arg(value_name = "ID_OR_URL", help = "系列 ID 或 Pixiv 系列页面 URL")]
+    pub target: String,
+
+    #[command(flatten)]
+    pub common: CommonDownloadArgs,
 }
 
 #[derive(Debug, Clone, Args)]

@@ -240,6 +240,16 @@ impl PixivNetSession {
         self.get_json(spec).await
     }
 
+    pub(crate) async fn fetch_series_page(
+        &self,
+        series_id: &str,
+        user_id: Option<&str>,
+        page: usize,
+    ) -> AppResult<Value> {
+        let spec = self.catalog.series_page(series_id, user_id, page)?;
+        self.get_json(spec).await
+    }
+
     #[cfg(test)]
     pub(crate) async fn download_original_image(
         &self,

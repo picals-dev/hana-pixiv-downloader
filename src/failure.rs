@@ -115,6 +115,10 @@ pub enum ReplayCommand {
         mode: String,
         options: ReplayOptions,
     },
+    Series {
+        series_id: String,
+        options: ReplayOptions,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +206,7 @@ impl ReplayCommand {
             Self::Bookmark { .. } => "download-bookmark",
             Self::Keyword { .. } => "download-keyword",
             Self::Ranking { .. } => "download-ranking",
+            Self::Series { .. } => "download-series",
         }
     }
 
@@ -232,6 +237,10 @@ impl ReplayCommand {
                 mode: mode.clone(),
                 options: options.with_retry_profile(),
             },
+            Self::Series { series_id, options } => Self::Series {
+                series_id: series_id.clone(),
+                options: options.with_retry_profile(),
+            },
         }
     }
 
@@ -242,6 +251,7 @@ impl ReplayCommand {
             Self::Bookmark { .. } => DownloadMode::Bookmark,
             Self::Keyword { .. } => DownloadMode::Keyword,
             Self::Ranking { .. } => DownloadMode::Ranking,
+            Self::Series { .. } => DownloadMode::Series,
         }
     }
 
@@ -252,6 +262,7 @@ impl ReplayCommand {
             Self::Bookmark { user_id, .. } => user_id,
             Self::Keyword { query, .. } => query,
             Self::Ranking { mode, .. } => mode,
+            Self::Series { series_id, .. } => series_id,
         }
     }
 
@@ -261,7 +272,8 @@ impl ReplayCommand {
             | Self::Illust { options, .. }
             | Self::Bookmark { options, .. }
             | Self::Keyword { options, .. }
-            | Self::Ranking { options, .. } => options,
+            | Self::Ranking { options, .. }
+            | Self::Series { options, .. } => options,
         }
     }
 }
