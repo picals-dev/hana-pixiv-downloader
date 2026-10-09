@@ -409,7 +409,8 @@ fn schedule_windows_replacement(executable: &Path, replacement: &Path) -> AppRes
         .ok_or_else(|| eyre!("无法定位 hpd 的安装目录"))?;
     let script = install_dir.join(format!(".hpd-update-{}.ps1", std::process::id()));
     let backup = install_dir.join(format!(".hpd-backup-{}.exe", std::process::id()));
-    fs::write(&script, WINDOWS_REPLACEMENT_SCRIPT).wrap_err("无法创建 Windows 更新助手")?;
+    let script_with_bom = format!("\u{FEFF}{}", WINDOWS_REPLACEMENT_SCRIPT);
+    fs::write(&script, script_with_bom).wrap_err("无法创建 Windows 更新助手")?;
 
     if let Err(error) = ProcessCommand::new("powershell")
         .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
