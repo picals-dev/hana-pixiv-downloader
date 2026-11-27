@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.2] - 2026-11-28
+
+### Fixed
+
+- 修复 `hpd update` 匿名调用 GitHub REST API（`api.github.com`）导致共享代理出口 IP 频繁触发 403 限流的问题：改为通过 GitHub Release 网页重定向解析最新正式版标签，并按具体版本标签固定下载 `SHA256SUMS.txt` 与平台安装包
+- 细化 `hpd update` 在 403/429 限流与 404 资产缺失时的中文错误提示，同时支持与官方安装脚本一致的 `HPD_DIST_BASE_URL` 环境变量
+- 修复 Release workflow 中 Android 平台构建因 `android-actions/setup-android@v3` 请求已下线的 `tools` 包而失败的问题
+
+### Notes
+
+- 因 `v0.3.1` 的远端发布构建在 Android 平台中断未产出 GitHub Release，本版本一并包含 `v0.3.1` 的 Windows 更新脚本 UTF-8 BOM 修复
+- `v0.1.5 ~ v0.3.0` 用户执行 `hpd update` 仍会使用旧版本逻辑（可能触发 403 限流或 Windows 中文乱码），建议先用官方安装脚本覆盖安装一次；升级到 `v0.3.2` 后即可恢复正常原地更新
+
 ## [0.3.1] - 2026-10-19
 
 ### Fixed

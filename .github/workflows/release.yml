@@ -60,7 +60,7 @@ jobs:
 
       - name: 安装 Android SDK
         if: matrix.android_ndk
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4.0.4
 
       - name: 安装 Android NDK
         if: matrix.android_ndk

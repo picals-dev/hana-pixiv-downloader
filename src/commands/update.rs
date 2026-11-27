@@ -15,6 +15,11 @@ use std::path::PathBuf;
 
 use eyre::{Context, bail, eyre};
 use flate2::read::GzDecoder;
+use reqwest::{
+    StatusCode, Url,
+    header::{HeaderMap, LOCATION, RETRY_AFTER},
+    redirect::Policy,
+};
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -23,26 +28,12 @@ use zip::ZipArchive;
 
 use crate::error::AppResult;
 
-const RELEASE_API_URL: &str =
-    "https://api.github.com/repos/picals-dev/hana-pixiv-downloader/releases/latest";
+const DEFAULT_RELEASES_BASE_URL: &str =
+    "https://github.com/picals-dev/hana-pixiv-downloader/releases";
 const REPOSITORY: &str = "picals-dev/hana-pixiv-downloader";
+const CHECKSUM_MANIFEST_NAME: &str = "SHA256SUMS.txt";
 const MARKER_FILE_NAME: &str = ".hpd-install.json";
 const INSTALL_MARKER: &str = r#"{"schema_version":1,"method":"github-release","repository":"picals-dev/hana-pixiv-downloader"}"#;
-
-#[derive(Debug, Deserialize)]
-struct Release {
-    tag_name: String,
-    draft: bool,
-    prerelease: bool,
-    assets: Vec<ReleaseAsset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReleaseAsset {
-    name: String,
-    digest: Option<String>,
-    browser_download_url: String,
-}
 
 #[derive(Debug, Deserialize)]
 struct InstallMarker {
@@ -60,9 +51,10 @@ pub(crate) async fn run() -> AppResult<()> {
 
     let current_version =
         Version::parse(env!("CARGO_PKG_VERSION")).wrap_err("当前 hpd 版本号不符合 SemVer 格式")?;
-    let client = build_update_client()?;
-    let release = fetch_latest_release(&client).await?;
-    let latest_version = parse_release_version(&release.tag_name)?;
+    let base_url = releases_base_url();
+    let latest_check_client = build_latest_check_client()?;
+    let latest_tag = fetch_latest_tag(&latest_check_client, &base_url).await?;
+    let latest_version = parse_release_version(&latest_tag)?;
 
     if latest_version <= current_version {
         if latest_version == current_version {
@@ -76,15 +68,25 @@ pub(crate) async fn run() -> AppResult<()> {
     }
 
     let asset_name = current_asset_name()?;
-    let asset = release
-        .assets
-        .iter()
-        .find(|asset| asset.name == asset_name)
-        .ok_or_else(|| eyre!("Release v{latest_version} 缺少当前平台资产：{asset_name}"))?;
-    let expected_digest = expected_digest(&client, &release, asset).await?;
+    let download_client = build_download_client()?;
+    let expected_digest = fetch_expected_digest(
+        &download_client,
+        &base_url,
+        &latest_tag,
+        &latest_version,
+        asset_name,
+    )
+    .await?;
 
     println!("发现新版本 v{latest_version}，正在下载更新...");
-    let archive = download_bytes(&client, &asset.browser_download_url, &asset.name).await?;
+    let archive = download_release_archive(
+        &download_client,
+        &base_url,
+        &latest_tag,
+        &latest_version,
+        asset_name,
+    )
+    .await?;
     verify_digest(&archive, &expected_digest)?;
 
     match stage_and_replace(&executable, asset_name, &archive)? {
@@ -101,7 +103,15 @@ pub(crate) async fn run() -> AppResult<()> {
     Ok(())
 }
 
-fn build_update_client() -> AppResult<reqwest::Client> {
+fn releases_base_url() -> String {
+    std::env::var("HPD_DIST_BASE_URL")
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_RELEASES_BASE_URL.to_string())
+}
+
+fn update_client_builder() -> AppResult<reqwest::ClientBuilder> {
     let mut builder = reqwest::Client::builder()
         .user_agent(format!("hpd/{} self-update", env!("CARGO_PKG_VERSION")));
 
@@ -116,61 +126,180 @@ fn build_update_client() -> AppResult<reqwest::Client> {
         );
     }
 
-    builder.build().wrap_err("无法创建更新请求客户端")
+    Ok(builder)
 }
 
-async fn fetch_latest_release(client: &reqwest::Client) -> AppResult<Release> {
+fn build_latest_check_client() -> AppResult<reqwest::Client> {
+    update_client_builder()?
+        .redirect(latest_redirect_policy())
+        .build()
+        .wrap_err("无法创建更新检查客户端")
+}
+
+fn build_download_client() -> AppResult<reqwest::Client> {
+    update_client_builder()?
+        .build()
+        .wrap_err("无法创建更新下载客户端")
+}
+
+fn latest_redirect_policy() -> Policy {
+    Policy::custom(|attempt| {
+        let path = attempt.url().path().trim_end_matches('/');
+        if path.ends_with("/latest") && attempt.previous().len() < 5 {
+            attempt.follow()
+        } else {
+            attempt.stop()
+        }
+    })
+}
+
+async fn fetch_latest_tag(client: &reqwest::Client, releases_base_url: &str) -> AppResult<String> {
+    let latest_url = format!("{releases_base_url}/latest");
     let response = client
-        .get(RELEASE_API_URL)
-        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .get(&latest_url)
         .send()
         .await
-        .wrap_err("查询最新 Release 失败，请检查网络后重试")?
-        .error_for_status()
-        .wrap_err("查询最新 Release 失败，请稍后重试")?;
-    let release = response
-        .json::<Release>()
-        .await
-        .wrap_err("最新 Release 响应格式无效")?;
+        .wrap_err("查询最新 Release 失败，请检查网络后重试")?;
 
-    if release.draft || release.prerelease {
-        bail!("最新 Release 不是可更新的正式版");
+    let status = response.status();
+    if status.is_redirection() {
+        let location = response
+            .headers()
+            .get(LOCATION)
+            .ok_or_else(|| eyre!("最新 Release 响应缺少 Location 重定向头"))?
+            .to_str()
+            .wrap_err("最新 Release 重定向地址不是有效 UTF-8")?;
+        let target = response
+            .url()
+            .join(location)
+            .wrap_err_with(|| format!("最新 Release 重定向地址无效：{location}"))?;
+        return extract_tag_from_release_url(&target).ok_or_else(|| {
+            eyre!("未找到已发布的正式版 Release（重定向目标不包含版本标签：{target}）")
+        });
     }
 
-    Ok(release)
+    if status.is_success() {
+        if let Some(tag) = extract_tag_from_release_url(response.url()) {
+            return Ok(tag);
+        }
+        bail!(
+            "未找到已发布的正式版 Release（意外响应 HTTP {status}：{}）",
+            response.url()
+        );
+    }
+
+    Err(classify_http_status_error(
+        "查询最新 Release",
+        status,
+        response.headers(),
+    ))
 }
 
-async fn expected_digest(
+fn extract_tag_from_release_url(url: &Url) -> Option<String> {
+    let segments: Vec<&str> = url
+        .path_segments()?
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if segments.len() >= 2 && segments[segments.len() - 2] == "tag" {
+        let tag = segments[segments.len() - 1];
+        if !tag.is_empty() {
+            return Some(tag.to_string());
+        }
+    }
+    None
+}
+
+async fn fetch_expected_digest(
     client: &reqwest::Client,
-    release: &Release,
-    asset: &ReleaseAsset,
+    releases_base_url: &str,
+    tag: &str,
+    version: &Version,
+    asset_name: &str,
 ) -> AppResult<String> {
-    if let Some(digest) = asset.digest.as_deref() {
-        return normalize_digest(digest);
-    }
-
-    let sums = release
-        .assets
-        .iter()
-        .find(|candidate| candidate.name == "SHA256SUMS.txt")
-        .ok_or_else(|| eyre!("Release 未提供资产校验值或 SHA256SUMS.txt"))?;
-    let sums = download_bytes(client, &sums.browser_download_url, &sums.name).await?;
+    let sums_url = release_asset_url(releases_base_url, tag, CHECKSUM_MANIFEST_NAME);
+    let sums = download_bytes(client, &sums_url, CHECKSUM_MANIFEST_NAME, |status| {
+        if status == StatusCode::NOT_FOUND {
+            Some(eyre!(
+                "Release v{version} 缺少校验文件 {CHECKSUM_MANIFEST_NAME}，可能仍在发布中，请稍后重试"
+            ))
+        } else {
+            None
+        }
+    })
+    .await?;
     let sums = std::str::from_utf8(&sums).wrap_err("SHA256SUMS.txt 不是 UTF-8 文本")?;
-    checksum_from_manifest(sums, &asset.name)
+    checksum_from_manifest(sums, asset_name)
+        .with_context(|| format!("Release v{version} 缺少当前平台资产校验值：{asset_name}"))
 }
 
-async fn download_bytes(client: &reqwest::Client, url: &str, name: &str) -> AppResult<Vec<u8>> {
-    client
+async fn download_release_archive(
+    client: &reqwest::Client,
+    releases_base_url: &str,
+    tag: &str,
+    version: &Version,
+    asset_name: &str,
+) -> AppResult<Vec<u8>> {
+    let archive_url = release_asset_url(releases_base_url, tag, asset_name);
+    download_bytes(client, &archive_url, asset_name, |status| {
+        if status == StatusCode::NOT_FOUND {
+            Some(eyre!("Release v{version} 缺少当前平台资产：{asset_name}"))
+        } else {
+            None
+        }
+    })
+    .await
+}
+
+fn release_asset_url(releases_base_url: &str, tag: &str, file_name: &str) -> String {
+    format!("{releases_base_url}/download/{tag}/{file_name}")
+}
+
+async fn download_bytes(
+    client: &reqwest::Client,
+    url: &str,
+    name: &str,
+    map_status: impl FnOnce(StatusCode) -> Option<eyre::Report>,
+) -> AppResult<Vec<u8>> {
+    let response = client
         .get(url)
         .send()
         .await
-        .wrap_err_with(|| format!("下载 {name} 失败，请检查网络后重试"))?
-        .error_for_status()
-        .wrap_err_with(|| format!("下载 {name} 失败，请稍后重试"))?
+        .wrap_err_with(|| format!("下载 {name} 失败，请检查网络后重试"))?;
+    let status = response.status();
+    if !status.is_success() {
+        if let Some(error) = map_status(status) {
+            return Err(error);
+        }
+        return Err(classify_http_status_error(
+            &format!("下载 {name}"),
+            status,
+            response.headers(),
+        ));
+    }
+    response
         .bytes()
         .await
         .map(|bytes| bytes.to_vec())
         .wrap_err_with(|| format!("读取 {name} 响应内容失败"))
+}
+
+fn classify_http_status_error(
+    action: &str,
+    status: StatusCode,
+    headers: &HeaderMap,
+) -> eyre::Report {
+    if status == StatusCode::FORBIDDEN || status == StatusCode::TOO_MANY_REQUESTS {
+        let retry_hint = headers
+            .get(RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| format!("（建议 {value} 秒后重试）"))
+            .unwrap_or_default();
+        return eyre!(
+            "{action}被远端拒绝（HTTP {status}），可能是当前出口 IP 触发了限流{retry_hint}；请稍后重试，或切换代理节点 / 设置 HPD_PROXY_URL 后重试。"
+        );
+    }
+
+    eyre!("{action}失败（HTTP {status}），请稍后重试")
 }
 
 fn parse_release_version(tag: &str) -> AppResult<Version> {
@@ -489,7 +618,25 @@ enum UpdateResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{checksum_from_manifest, normalize_digest, parse_release_version, verify_digest};
+    use semver::Version;
+    use sha2::{Digest, Sha256};
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
+    use super::{
+        Url, checksum_from_manifest, download_release_archive, extract_tag_from_release_url,
+        fetch_expected_digest, fetch_latest_tag, latest_redirect_policy, normalize_digest,
+        parse_release_version, verify_digest,
+    };
+
+    fn test_latest_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .redirect(latest_redirect_policy())
+            .build()
+            .unwrap()
+    }
 
     #[test]
     fn release_version_removes_only_the_leading_v() {
@@ -520,5 +667,229 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn release_url_tag_extraction_handles_standard_and_invalid_paths() {
+        let standard =
+            Url::parse("https://github.com/picals-dev/hana-pixiv-downloader/releases/tag/v0.3.2")
+                .unwrap();
+        assert_eq!(
+            extract_tag_from_release_url(&standard).as_deref(),
+            Some("v0.3.2")
+        );
+
+        let with_slash_and_query = Url::parse(
+            "https://github.com/picals-dev/hana-pixiv-downloader/releases/tag/v0.3.2/?foo=1#top",
+        )
+        .unwrap();
+        assert_eq!(
+            extract_tag_from_release_url(&with_slash_and_query).as_deref(),
+            Some("v0.3.2")
+        );
+
+        let mirror = Url::parse("https://mirror.example.com/hpd/tag/v0.3.2").unwrap();
+        assert_eq!(
+            extract_tag_from_release_url(&mirror).as_deref(),
+            Some("v0.3.2")
+        );
+
+        let no_release =
+            Url::parse("https://github.com/picals-dev/hana-pixiv-downloader/releases").unwrap();
+        assert_eq!(extract_tag_from_release_url(&no_release), None);
+
+        let empty_tag =
+            Url::parse("https://github.com/picals-dev/hana-pixiv-downloader/releases/tag/")
+                .unwrap();
+        assert_eq!(extract_tag_from_release_url(&empty_tag), None);
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_tag_reads_redirect_location_without_fetching_tag_page() {
+        let server = MockServer::start().await;
+        let tag_url = format!("{}/releases/tag/v0.3.2", server.uri());
+
+        Mock::given(method("GET"))
+            .and(path("/releases/latest"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", tag_url.as_str()))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/releases/tag/v0.3.2"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let tag = fetch_latest_tag(&test_latest_client(), &format!("{}/releases", server.uri()))
+            .await
+            .unwrap();
+        assert_eq!(tag, "v0.3.2");
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_tag_follows_intermediate_latest_redirects() {
+        let server = MockServer::start().await;
+        let next_latest = format!("{}/new-repo/releases/latest", server.uri());
+        let tag_url = format!("{}/new-repo/releases/tag/v0.3.2", server.uri());
+
+        Mock::given(method("GET"))
+            .and(path("/old-repo/releases/latest"))
+            .respond_with(
+                ResponseTemplate::new(301).insert_header("location", next_latest.as_str()),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/new-repo/releases/latest"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", tag_url.as_str()))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/new-repo/releases/tag/v0.3.2"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let tag = fetch_latest_tag(
+            &test_latest_client(),
+            &format!("{}/old-repo/releases", server.uri()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(tag, "v0.3.2");
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_tag_supports_relative_location_and_rejects_missing_tag() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/ok/releases/latest"))
+            .respond_with(
+                ResponseTemplate::new(302).insert_header("location", "/ok/releases/tag/v0.3.2"),
+            )
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/empty/releases/latest"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", "/empty/releases"))
+            .mount(&server)
+            .await;
+
+        let client = test_latest_client();
+        let tag = fetch_latest_tag(&client, &format!("{}/ok/releases", server.uri()))
+            .await
+            .unwrap();
+        assert_eq!(tag, "v0.3.2");
+
+        let err = fetch_latest_tag(&client, &format!("{}/empty/releases", server.uri()))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("未找到已发布的正式版 Release"));
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_tag_reports_actionable_rate_limit_error() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/releases/latest"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "60"))
+            .mount(&server)
+            .await;
+
+        let err = fetch_latest_tag(&test_latest_client(), &format!("{}/releases", server.uri()))
+            .await
+            .unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("429"));
+        assert!(message.contains("限流"));
+        assert!(message.contains("60 秒"));
+    }
+
+    #[tokio::test]
+    async fn download_and_verify_pins_checksum_and_archive_to_resolved_tag() {
+        let server = MockServer::start().await;
+        let payload = b"fake-hpd-archive-bytes";
+        let expected_hash = format!("{:x}", Sha256::digest(payload));
+        let manifest = format!("{expected_hash}  artifacts/macos/hpd-test.tar.gz\n");
+        let cdn_url = format!("{}/cdn/hpd-test.tar.gz", server.uri());
+
+        Mock::given(method("GET"))
+            .and(path("/releases/download/v0.3.2/SHA256SUMS.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(manifest))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/releases/download/v0.3.2/hpd-test.tar.gz"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", cdn_url.as_str()))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/cdn/hpd-test.tar.gz"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload.as_slice()))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let base_url = format!("{}/releases", server.uri());
+        let version = Version::parse("0.3.2").unwrap();
+
+        let digest =
+            fetch_expected_digest(&client, &base_url, "v0.3.2", &version, "hpd-test.tar.gz")
+                .await
+                .unwrap();
+        let archive =
+            download_release_archive(&client, &base_url, "v0.3.2", &version, "hpd-test.tar.gz")
+                .await
+                .unwrap();
+        verify_digest(&archive, &digest).unwrap();
+    }
+
+    #[tokio::test]
+    async fn missing_checksum_or_archive_reports_clear_not_found_error() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/releases/download/v0.3.2/SHA256SUMS.txt"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/releases/download/v0.3.2/hpd-test.tar.gz"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let base_url = format!("{}/releases", server.uri());
+        let version = Version::parse("0.3.2").unwrap();
+
+        let sums_err =
+            fetch_expected_digest(&client, &base_url, "v0.3.2", &version, "hpd-test.tar.gz")
+                .await
+                .unwrap_err();
+        assert!(sums_err.to_string().contains("SHA256SUMS.txt"));
+
+        let archive_err =
+            download_release_archive(&client, &base_url, "v0.3.2", &version, "hpd-test.tar.gz")
+                .await
+                .unwrap_err();
+        assert!(archive_err.to_string().contains("缺少当前平台资产"));
     }
 }
